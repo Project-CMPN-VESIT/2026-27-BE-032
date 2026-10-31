@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">DiabeticAI</string>
+    <string name="app_subtitle">AI-Powered Early Detection of Diabetes and Personalized Healthcare</string>
+    <string name="copyright_footer">© 2026 DiabeticAI. All rights reserved.</string>
+</resources>

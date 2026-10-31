@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Android
+.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+mapping.txt
+
+# Flutter & Dart
+.dart_tool/
+**/.dart_tool/
+.packages
+.pub-cache/
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDEs
+.idea/
+**/.idea/
+*.iml
+**/*.iml
+.vscode/
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+firebase-adminsdk*.json
+
+# Logs & Temporary debug files
+*.log
+cloudflared.log
+test_output.txt
+live_test_output.txt
+analyze*.txt
+lint*.txt
+issues.json
+debug_*.jpg
+original_uploaded.jpg
+uploaded_debug.jpg
+cropped_foot.jpg
+
+# OS
+Thumbs.db
+.DS_Store

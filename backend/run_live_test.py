@@ -78,13 +78,12 @@ def main():
     foot_res = post("/predict/foot", foot_payload)
     assert foot_res.get("success"), f"Foot FAILED: {foot_res}"
     assert "prediction" in foot_res, "prediction missing from foot"
-    assert "risk_percentage" in foot_res, "risk_percentage missing from foot"
+    assert "confidence" in foot_res, "confidence missing from foot"
     fallback = foot_res.get("source", "")
     if "fallback" in str(fallback):
         print("⚠️  Foot returned FALLBACK — check server logs above")
     else:
         print("✅ FOOT PASSED  prediction:", foot_res["prediction"])
-        print("   risk_percentage:", foot_res["risk_percentage"])
         print("   confidence:", foot_res["confidence"])
 
     # ── 5. Final ─────────────────────────────────────────────────────────────
@@ -112,7 +111,7 @@ def main():
     print(f"  Retina prediction          : {retina_res['prediction']}")
     print(f"  Retina risk_percentage     : {retina_res['risk_percentage']}")
     print(f"  Foot prediction            : {foot_res['prediction']}")
-    print(f"  Foot risk_percentage       : {foot_res['risk_percentage']}")
+    print(f"  Foot confidence            : {foot_res['confidence']}")
     print(f"  Final overall_risk         : {final_res['overall_risk_percentage']}")
     print(f"  Final risk_level           : {final_res['risk_level']}")
     print(SEPARATOR)

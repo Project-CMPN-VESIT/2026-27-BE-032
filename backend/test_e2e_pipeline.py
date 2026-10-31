@@ -3,6 +3,13 @@ import os
 import sys
 from pathlib import Path
 
+# Ensure stdout supports UTF-8 on Windows
+if sys.platform == "win32" and sys.stdout.encoding.lower() != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Add project root to sys.path
 root_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root_dir))
@@ -72,7 +79,8 @@ def test_full_pipeline():
     foot_res = response.json()
     assert foot_res["success"] is True
     assert "prediction" in foot_res
-    assert "risk_percentage" in foot_res
+    assert "confidence" in foot_res
+    assert "visible_findings" in foot_res
     print("✅ Foot Endpoint Passed:", foot_res)
 
     # 6. Final Prediction Endpoint

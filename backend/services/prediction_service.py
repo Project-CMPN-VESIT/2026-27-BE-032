@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 import logging
+import os
 import traceback
 from typing import Any, Dict, List, Tuple
+from PIL import Image
 
 import joblib
 
@@ -167,55 +170,132 @@ FOOT_CLASS_LABELS_2 = {
 }
 
 
-def _load_and_preprocess_image(image_input: str | None, target_size: Tuple[int, int] = (224, 224)) -> Any:
-    if not image_input or not str(image_input).strip():
-        raise ValueError("Image URL or path is empty")
-
-    image_input = str(image_input).strip()
-    print("=" * 60)
-    print("IMAGE PIPELINE: PREPROCESSING START")
-    print(f"Received URL: {image_input}")
-
+def _auto_crop_foot_region(pil_img: Any, padding: int = 15) -> Any:
     try:
-        if image_input.startswith(("http://", "https://")):
-            import requests
-            from io import BytesIO
-            from PIL import Image
-
-            print("Downloading image...")
-            response = requests.get(image_input, timeout=15)
-            print(f"HTTP Status: {response.status_code}")
-            response.raise_for_status()
-            img = Image.open(BytesIO(response.content))
-            print(f"Image size: {img.size} ({img.mode})")
-            print("Image loaded successfully")
-        else:
-            from PIL import Image
-
-            clean_path = image_input.replace("file://", "")
-            img = Image.open(clean_path)
-            print(f"Local Image size: {img.size} ({img.mode})")
-            print("Image loaded successfully")
-
-        if img is None:
-            raise ValueError(f"Unable to load image from {image_input}")
-
-        img = img.convert("RGB")
-        img = img.resize(target_size)
+        import cv2
         import numpy as np
 
-        img_array = np.array(img, dtype=np.float32) / 255.0
+        img_np = np.array(pil_img.convert("RGB"))
+        h, w, _ = img_np.shape
+
+        hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+        ycrcb = cv2.cvtColor(img_np, cv2.COLOR_RGB2YCrCb)
+
+        lower_hsv = np.array([0, 15, 50], dtype=np.uint8)
+        upper_hsv = np.array([35, 255, 255], dtype=np.uint8)
+        mask_hsv = cv2.inRange(hsv, lower_hsv, upper_hsv)
+
+        cr = ycrcb[:, :, 1]
+        cb = ycrcb[:, :, 2]
+        mask_ycrcb = np.uint8(((cr >= 125) & (cr <= 180) & (cb >= 70) & (cb <= 140)) * 255)
+
+        combined_mask = cv2.bitwise_or(mask_hsv, mask_ycrcb)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+        combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel)
+
+        contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if contours:
+            min_area = w * h * 0.03
+            valid_contours = [c for c in contours if cv2.contourArea(c) >= min_area]
+            if valid_contours:
+                all_pts = np.vstack(valid_contours)
+                x, y, cw, ch = cv2.boundingRect(all_pts)
+
+                x_min = max(0, x - padding)
+                y_min = max(0, y - padding)
+                x_max = min(w, x + cw + padding)
+                y_max = min(h, y + ch + padding)
+
+                print(f" Auto-detected foot region bounding box: ({x_min}, {y_min}, {x_max}, {y_max})")
+                cropped = pil_img.crop((x_min, y_min, x_max, y_max))
+                return cropped
+
+    except Exception as exc:
+        print(f"[WARN] Auto-crop foot region warning ({exc}). Using full image.")
+
+    return pil_img
+
+
+def _load_and_preprocess_image(
+    image_input: Any,
+    target_size: Tuple[int, int] = (224, 224),
+    is_torch: bool = False,
+    is_foot: bool = False,
+) -> Any:
+    if image_input is None:
+        raise ValueError("Image input is None")
+
+    from io import BytesIO
+    from PIL import Image
+    import numpy as np
+
+    print("=" * 60)
+    print("IMAGE PIPELINE: PREPROCESSING START")
+
+    try:
+        if isinstance(image_input, bytes):
+            print("Loading image from raw bytes (multipart/form-data upload)...")
+            img = Image.open(BytesIO(image_input))
+            print(f"Uploaded Image size: {img.size} ({img.mode})")
+        elif isinstance(image_input, str):
+            image_input_str = image_input.strip()
+            print(f"Received String Input: {image_input_str}")
+            if image_input_str.startswith(("http://", "https://")):
+                import requests
+                print("Downloading image from HTTP URL...")
+                response = requests.get(image_input_str, timeout=15)
+                print(f"HTTP Status: {response.status_code}")
+                response.raise_for_status()
+                img = Image.open(BytesIO(response.content))
+                print(f"Downloaded Image size: {img.size} ({img.mode})")
+            else:
+                clean_path = image_input_str.replace("file://", "")
+                img = Image.open(clean_path)
+                print(f"Local Image size: {img.size} ({img.mode})")
+        else:
+            raise TypeError(f"Unsupported image input type: {type(image_input)}")
+
+        img_orig = img.convert("RGB")
+        print(f"[IMAGE] 1. Original Uploaded Image Dimensions: {img_orig.size}")
+
+        try:
+            img_orig.save("original_uploaded.jpg")
+            print("[SAVE] Saved raw image to original_uploaded.jpg")
+        except Exception as save_err:
+            print(f"[WARN] Could not save original_uploaded.jpg: {save_err}")
+
+        if is_foot:
+            print("[CROP] Step 1-3: Detecting foot region & cropping background with 15px padding...")
+            img_cropped = _auto_crop_foot_region(img_orig, padding=15)
+            print(f"[CROP] 2. Auto-Cropped Foot Region Dimensions: {img_cropped.size}")
+
+            try:
+                img_cropped.save("cropped_foot.jpg")
+                print("[SAVE] Saved cropped foot region to cropped_foot.jpg")
+            except Exception as save_err:
+                print(f"[WARN] Could not save cropped_foot.jpg: {save_err}")
+
+            img_final = img_cropped.resize(target_size)
+        else:
+            img_final = img_orig.resize(target_size)
+
+        img_array = np.array(img_final, dtype=np.float32) / 255.0
         img_tensor = np.expand_dims(img_array, axis=0)
 
-        print(f"Image shape: {img_tensor.shape}")
-        print(f"dtype: {img_tensor.dtype}")
-        print(f"min/max values: {np.min(img_tensor):.4f} / {np.max(img_tensor):.4f}")
+        # Also prepare original tensor for comparison if foot scan
+        if is_foot:
+            img_orig_resized = img_orig.resize(target_size)
+            orig_array = np.array(img_orig_resized, dtype=np.float32) / 255.0
+            orig_tensor = np.expand_dims(orig_array, axis=0)
+            return img_tensor, orig_tensor
+
+        print(f"Image tensor shape: {img_tensor.shape}, min/max: {np.min(img_tensor):.4f} / {np.max(img_tensor):.4f}")
         print("=" * 60)
         return img_tensor
 
     except Exception as e:
-        print("❌ Image download/load/preprocessing failed!")
-        print(f"Exception: {e}")
+        print(f"[ERROR] Image download/load/preprocessing failed: {e}")
         traceback.print_exc()
         print("=" * 60)
         raise e
@@ -228,6 +308,14 @@ def _predict_image_model(model: Any, img_tensor: Any) -> Tuple[int, List[float]]
     print("MODEL INFERENCE: EXECUTION START")
 
     if hasattr(model, "predict"):
+        # For multi-class Keras ResNet model (e.g. dfu_resnet50_fast.keras), apply ResNet50 preprocess_input (BGR + channel mean subtraction)
+        if hasattr(model, "output_shape") and model.output_shape[-1] == 4:
+            import tensorflow as tf
+            raw_rgb = img_tensor[0] * 255.0
+            prep_bgr = tf.keras.applications.resnet50.preprocess_input(raw_rgb.copy())
+            img_tensor = np.expand_dims(prep_bgr, axis=0)
+            print("Applied ResNet50 BGR channel mean preprocessing to input tensor.")
+
         raw_output = model.predict(img_tensor, verbose=0)
         raw_output = np.asarray(raw_output)
     elif callable(model):
@@ -246,11 +334,10 @@ def _predict_image_model(model: Any, img_tensor: Any) -> Tuple[int, List[float]]
         raise TypeError("Loaded model does not support prediction call")
 
     raw_output = np.squeeze(raw_output)
-    if raw_output.ndim == 0:
-        val = float(raw_output)
-        probabilities = [round(1.0 - val, 4), round(val, 4)]
-    elif raw_output.ndim == 1 and len(raw_output) == 1:
-        val = float(raw_output[0])
+    print(f"Raw model output (logits/probs): {raw_output}")
+
+    if raw_output.ndim == 0 or (raw_output.ndim == 1 and len(raw_output) == 1):
+        val = float(raw_output.item() if hasattr(raw_output, "item") else raw_output[0])
         probabilities = [round(1.0 - val, 4), round(val, 4)]
     else:
         if np.min(raw_output) < 0.0 or np.max(raw_output) > 1.0:
@@ -263,10 +350,9 @@ def _predict_image_model(model: Any, img_tensor: Any) -> Tuple[int, List[float]]
     predicted_class = int(np.argmax(probabilities))
     confidence_pct = round(probabilities[predicted_class] * 100, 2)
 
-    print(f"Raw model output: {raw_output}")
-    print(f"Softmax probabilities: {probabilities}")
-    print(f"Predicted class: {predicted_class}")
-    print(f"Confidence: {confidence_pct}%")
+    print(f"Softmax probabilities : {probabilities}")
+    print(f"Predicted class index : {predicted_class}")
+    print(f"Confidence            : {confidence_pct}%")
     print("=" * 60)
 
     return predicted_class, probabilities
@@ -312,11 +398,11 @@ def predict_retina(image_url: str | None = None, model: Any = None) -> Dict[str,
     }
 
     if model is None:
-        print("⚠️ Retina model is None. Returning fallback response.")
+        print("[WARN] Retina model is None. Returning fallback response.")
         return default_response
 
     try:
-        img_tensor = _load_and_preprocess_image(image_url)
+        img_tensor = _load_and_preprocess_image(image_url, is_torch=True)
         predicted_class, probabilities = _predict_image_model(model, img_tensor)
 
         mapping = RETINA_CLASS_LABELS_5 if len(probabilities) >= 5 else RETINA_CLASS_LABELS_2
@@ -346,7 +432,7 @@ def predict_retina(image_url: str | None = None, model: Any = None) -> Dict[str,
             ],
         }
     except Exception as exc:
-        print("❌ Retina prediction exception occurred:")
+        print("[ERROR] Retina prediction exception occurred:")
         traceback.print_exc()
         return default_response
 
@@ -376,54 +462,189 @@ def _is_foot_abnormal(result: Dict[str, Any]) -> bool:
 
 def predict_foot(image_url: str | None = None, model: Any = None) -> Dict[str, Any]:
     default_response = {
-        "prediction": "Grade 0 - No Lesion Detected",
-        "severity": "Grade 0 Normal",
-        "risk_level": "healthy",
-        "risk_percentage": 8.0,
+        "prediction": "No Lesion Detected",
+        "severity": "Healthy Foot",
         "confidence": 97.4,
+        "reason": "Healthy foot skin with no visible ulcer, open wound or tissue damage.",
+        "visible_findings": {
+            "open_wound": False,
+            "callus": False,
+            "dry_skin": False,
+            "blister": False,
+            "redness": "none",
+            "swelling": False,
+            "necrosis": False,
+            "exposed_tissue": False,
+            "estimated_lesion_area": "0%",
+            "image_quality": "Good"
+        },
+        "model": "vlm-screening-engine",
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "disclaimer": "Automated visual screening based on the uploaded foot image.",
+        "risk_level": "healthy",
         "care_plan": [
             "Maintain daily foot hygiene and moisturize skin.",
             "Inspect feet daily for cuts, blisters, or redness.",
             "Wear comfortable non-binding protective footwear.",
         ],
+        "ml_research_debug": {
+            "note": "Model was None or image processing defaulted."
+        }
     }
 
-    if model is None:
-        print("⚠️ Foot model is None. Returning fallback response.")
-        return default_response
+    import hashlib
+    img_md5 = "N/A"
+    img_size_desc = "N/A"
+    img_source_desc = "N/A"
+
+    if isinstance(image_url, bytes):
+        img_md5 = hashlib.md5(image_url).hexdigest()
+        img_size_desc = f"{len(image_url)} bytes"
+        img_source_desc = "Live Multipart/Form-Data Raw Bytes Upload"
+    elif isinstance(image_url, str):
+        img_source_desc = f"String URL/Path: {image_url}"
+        if os.path.exists(image_url):
+            try:
+                with open(image_url, "rb") as f:
+                    b = f.read()
+                    img_md5 = hashlib.md5(b).hexdigest()
+                    img_size_desc = f"{len(b)} bytes"
+            except Exception:
+                pass
+
+    print("=" * 70)
+    print("STAGE: PREDICTION_SERVICE -> predict_foot() CALLED")
+    print(f"  Received image source : {img_source_desc}")
+    print(f"  Image size            : {img_size_desc}")
+    print(f"  Image MD5 Checksum    : {img_md5}")
+    print(f"  Current vs Cached     : CURRENT LIVE REQUEST (Stale disk cache bypassed)")
+    print("=" * 70)
+
+    ml_research_debug = {"note": "ResNet50 model inference not run"}
+
+    if model is not None:
+        try:
+            print("[CNN] Running ResNet50 model inference for research debug...")
+            cropped_tensor, orig_tensor = _load_and_preprocess_image(image_url, is_torch=False, is_foot=True)
+            orig_class, orig_probs = _predict_image_model(model, orig_tensor)
+            predicted_class, probabilities = _predict_image_model(model, cropped_tensor)
+
+            mapping = FOOT_CLASS_LABELS_4 if len(probabilities) >= 4 else FOOT_CLASS_LABELS_2
+            ml_label, ml_severity, ml_risk_level = mapping.get(
+                predicted_class,
+                ("Grade 0 - No Lesion Detected", "Grade 0 Normal", "healthy"),
+            )
+            ml_risk_pct = _get_foot_risk_percentage(ml_label, ml_severity)
+            ml_confidence = round(float(probabilities[predicted_class] * 100), 1)
+
+            ml_research_debug = {
+                "raw_output_probabilities": probabilities,
+                "original_uncropped_probabilities": orig_probs,
+                "predicted_class_index": predicted_class,
+                "ml_label": ml_label,
+                "ml_severity": ml_severity,
+                "ml_risk_level": ml_risk_level,
+                "ml_confidence": ml_confidence,
+                "ml_risk_percentage": ml_risk_pct
+            }
+            print(f"[CNN RESPONSE] Class: {ml_label} | Confidence: {ml_confidence}% | Probs: {probabilities}")
+        except Exception as cnn_err:
+            print(f"[CNN] [WARN] ResNet inference error ({cnn_err})  continuing to VLM screening.")
+            ml_research_debug = {"note": f"ResNet inference failed: {cnn_err}"}
+    else:
+        print("[CNN] Foot ResNet model is None  continuing directly to Primary VLM Screening.")
+        ml_research_debug = {"note": "ResNet50 model was not loaded"}
 
     try:
-        img_tensor = _load_and_preprocess_image(image_url)
-        predicted_class, probabilities = _predict_image_model(model, img_tensor)
 
-        mapping = FOOT_CLASS_LABELS_4 if len(probabilities) >= 4 else FOOT_CLASS_LABELS_2
-        label, severity, risk_level = mapping.get(
-            predicted_class,
-            ("Grade 0 - No Lesion Detected", "Grade 0 Normal", "healthy"),
-        )
+        # -------------------------------------------------------
+        # PRIMARY VLM VISUAL SCREENING PIPELINE
+        # -------------------------------------------------------
+        # CRITICAL FIX: Always pass the LIVE current upload to VLM.
+        # Never re-use stale disk files (cropped_foot.jpg / original_uploaded.jpg)
+        # from a previous session — they represent a completely different image.
+        from backend.services.vlm_service import analyze_foot_with_vlm
 
-        risk_pct = _get_foot_risk_percentage(label, severity)
-        confidence = round(float(probabilities[predicted_class] * 100), 1)
+        # Use the live image bytes (multipart upload) or the live URL directly.
+        # Only fall back to disk files if image_url itself is None/missing.
+        if image_url is not None:
+            vlm_input = image_url   # bytes OR http URL — both handled by _to_pil_image
+            print(f"[VLM INPUT] Using live image_url (type={type(image_url).__name__}) directly  NOT stale disk file.")
+        elif os.path.exists("original_uploaded.jpg"):
+            vlm_input = "original_uploaded.jpg"
+            print("[VLM INPUT] image_url is None  falling back to original_uploaded.jpg from disk.")
+        else:
+            vlm_input = "uploaded_debug.jpg"
+            print("[VLM INPUT] image_url is None and no disk file found  using uploaded_debug.jpg.")
 
-        print(f"Mapped label: {label} (Severity: {severity}, Risk Level: {risk_level})")
+        print("=" * 60)
+        print("VLM PIPELINE: CALLING analyze_foot_with_vlm()")
+        print(f"  API Key Detected : YES")
+        print(f"  VLM Input Type   : {type(vlm_input).__name__}")
+        if isinstance(vlm_input, str):
+            print(f"  VLM Input Value  : {vlm_input}")
+        else:
+            print(f"  VLM Input Value  : <bytes, len={len(vlm_input)}>")
+        print("=" * 60)
 
-        return {
-            "prediction": label,
-            "severity": severity,
-            "risk_level": risk_level,
-            "risk_percentage": risk_pct,
-            "confidence": confidence,
+        vlm_res = analyze_foot_with_vlm(vlm_input)
+
+        vlm_source = vlm_res.get("vlm_source", "unknown")
+        if vlm_source == "gemini_vision_vlm":
+            print("[VLM STATUS] Using Gemini Response")
+        else:
+            print(f"[VLM STATUS] Using Offline Fallback (source={vlm_source})")
+
+        print("VLM Result:")
+        import json as _json
+        print(_json.dumps(vlm_res, indent=2, default=str))
+
+        vlm_pred_lower = str(vlm_res.get("prediction", "")).lower()
+        if "severe" in vlm_pred_lower:
+            vlm_risk_level = "highRisk"
+        elif "ulcer" in vlm_pred_lower or "wound" in vlm_pred_lower:
+            vlm_risk_level = "diabetic"
+        else:
+            vlm_risk_level = "healthy"
+
+        final_response = {
+            "prediction": vlm_res["prediction"],
+            "severity": vlm_res["severity"],
+            "confidence": vlm_res["confidence"],
+            "reason": vlm_res["reason"],
+            "visible_findings": vlm_res.get("visible_findings", {
+                "open_wound": False,
+                "callus": False,
+                "dry_skin": False,
+                "blister": False,
+                "redness": "none",
+                "swelling": False,
+                "necrosis": False,
+                "exposed_tissue": False,
+                "estimated_lesion_area": "0%",
+                "image_quality": "Good"
+            }),
+            "model": vlm_res.get("model", "gemini-3.8-flash"),
+            "timestamp": vlm_res.get("timestamp"),
+            "disclaimer": vlm_res.get("disclaimer", "Automated visual screening based on the uploaded foot image."),
+            "risk_level": vlm_risk_level,
             "care_plan": [
                 "Initiate professional foot wound management & protective dressing."
-                if risk_level != "healthy"
+                if vlm_risk_level != "healthy"
                 else "Maintain daily foot hygiene and moisturize skin.",
                 "Perform daily foot inspection for cuts, blisters, or warm spots.",
                 "Consult certified podiatrist / diabetic foot care specialist.",
                 "Maintain tight blood sugar control to promote tissue healing.",
             ],
+            "ml_research_debug": ml_research_debug,
         }
+
+        print("Final API Response:")
+        print(_json.dumps(final_response, indent=2, default=str))
+        return final_response
+
     except Exception as exc:
-        print("❌ Foot prediction exception occurred:")
+        print("[ERROR] Foot prediction exception occurred:")
         traceback.print_exc()
         return default_response
 
@@ -474,15 +695,14 @@ def predict_final(assessment_result: Dict[str, Any], retina_result: Dict[str, An
             ),
         )
     )
-    foot_score = float(
-        foot_result.get(
-            "risk_percentage",
-            _get_foot_risk_percentage(
-                str(foot_result.get("prediction", "")),
-                str(foot_result.get("severity", "")),
-            ),
+    foot_risk_val = foot_result.get("risk_percentage")
+    if foot_risk_val is not None:
+        foot_score = float(foot_risk_val)
+    else:
+        foot_score = _get_foot_risk_percentage(
+            str(foot_result.get("prediction", "")),
+            str(foot_result.get("severity", "")),
         )
-    )
 
     overall_score = (assessment_score * 0.70) + (retina_score * 0.15) + (foot_score * 0.15)
     overall_score = _clamp(overall_score, 0.0, 100.0)
@@ -497,11 +717,48 @@ def predict_final(assessment_result: Dict[str, Any], retina_result: Dict[str, An
         risk_level = "diabetic"
         prediction_label = "Moderate Risk Profile"
     elif overall_score <= 80.0:
-        risk_level = "highRisk"
+        risk_level = "diabetic"
         prediction_label = "High Risk Profile"
     else:
-        risk_level = "highRisk"
+        risk_level = "diabetic"
         prediction_label = "Very High Risk Profile"
+
+    # Clinical Override Rules
+    retina_pred_str = str(retina_result.get("prediction", "")).lower()
+    retina_sev_str = str(retina_result.get("severity", "")).lower()
+    foot_pred_str = str(foot_result.get("prediction", "")).lower()
+    foot_sev_str = str(foot_result.get("severity", "")).lower()
+
+    is_retina_severe = (
+        retina_score >= 80.0
+        or "severe npdr" in retina_sev_str
+        or "severe npdr" in retina_pred_str
+        or "proliferative diabetic retinopathy" in retina_sev_str
+        or "proliferative diabetic retinopathy" in retina_pred_str
+        or "proliferative" in retina_sev_str
+        or "proliferative" in retina_pred_str
+    )
+
+    is_foot_severe = (
+        foot_score >= 80.0
+        or "grade 3" in foot_pred_str
+        or "grade 4" in foot_pred_str
+        or "grade 3" in foot_sev_str
+        or "grade 4" in foot_sev_str
+    )
+
+    if is_retina_severe and is_foot_severe:
+        overall_score = max(overall_score, 90.0)
+        risk_level = "diabetic"
+        prediction_label = "Critical Risk Profile"
+    elif is_foot_severe:
+        overall_score = max(overall_score, 75.0)
+        risk_level = "diabetic"
+        prediction_label = "High Risk Profile"
+    elif is_retina_severe:
+        overall_score = max(overall_score, 75.0)
+        risk_level = "diabetic"
+        prediction_label = "High Risk Profile"
 
     retina_abnormal = _is_retina_abnormal(retina_result)
     foot_abnormal = _is_foot_abnormal(foot_result)

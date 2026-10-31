@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 import logging
+import os
 import traceback
 from typing import Any, Dict, Optional
 
@@ -61,36 +63,58 @@ async def health() -> Dict[str, str]:
 
 
 @router.post("/predict/assessment")
-async def predict_assessment_endpoint(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+async def predict_assessment_endpoint(request: Request) -> Dict[str, Any]:
+    timestamp = datetime.now().isoformat()
+    content_type = request.headers.get("content-type", "")
+    print("=" * 60)
+    print(f"[ENDPOINT] ENDPOINT HIT: /predict/assessment | Time: {timestamp} | Method: {request.method} | Content-Type: {content_type}")
+    print(f"   Headers: {dict(request.headers)}")
     try:
-        print("=" * 60)
+        payload = await request.json()
         print("ASSESSMENT PAYLOAD:", payload)
         result = assess_diabetes(payload, model=request.app.state.model_registry.assessment_model)
         print("ASSESSMENT RESULT:", result)
         print("=" * 60)
         return {"success": True, **result}
     except Exception as exc:
-        print("❌ ASSESSMENT ENDPOINT ERROR:", exc)
+        print("[ERROR] ASSESSMENT ENDPOINT ERROR:", exc)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Assessment prediction failed: {exc}") from exc
 
 
 @router.post("/predict/retina")
-async def predict_retina_endpoint(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+async def predict_retina_endpoint(request: Request) -> Dict[str, Any]:
+    timestamp = datetime.now().isoformat()
+    content_type = request.headers.get("content-type", "")
+    print("=" * 60)
+    print(f"[ENDPOINT] ENDPOINT HIT: /predict/retina | Time: {timestamp} | Method: {request.method} | Content-Type: {content_type}")
+    print(f"   Headers: {dict(request.headers)}")
     try:
-        print("=" * 60)
-        print("RETINA PAYLOAD:", payload)
+        image_input = None
 
-        image_url = (
-            payload.get("imageUrl")
-            or payload.get("image_url")
-            or payload.get("url")
-        )
+        if "multipart/form-data" in content_type:
+            print("RETINA REQUEST TYPE: multipart/form-data")
+            form = await request.form()
+            file_obj = form.get("file") or form.get("image")
+            if file_obj and hasattr(file_obj, "read"):
+                image_input = await file_obj.read()
+                print(f"RETINA MULTIPART UPLOAD: received {len(image_input)} bytes")
+            else:
+                image_input = form.get("imageUrl") or form.get("image_url")
+        else:
+            payload = await request.json()
+            print("RETINA PAYLOAD:", payload)
+            print("RETINA JSON PAYLOAD:", payload)
+            image_input = (
+                payload.get("imageUrl")
+                or payload.get("image_url")
+                or payload.get("url")
+            )
 
-        print("RETINA IMAGE URL:", image_url)
+        print("RETINA IMAGE INPUT TYPE:", type(image_input))
 
         result = predict_retina(
-            image_url=image_url,
+            image_url=image_input,
             model=request.app.state.model_registry.retina_model,
         )
 
@@ -100,7 +124,7 @@ async def predict_retina_endpoint(request: Request, payload: Dict[str, Any]) -> 
         return {"success": True, **result}
 
     except Exception as exc:
-        print("❌ RETINA ENDPOINT ERROR:", exc)
+        print("[ERROR] RETINA ENDPOINT ERROR:", exc)
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
@@ -109,21 +133,73 @@ async def predict_retina_endpoint(request: Request, payload: Dict[str, Any]) -> 
 
 
 @router.post("/predict/foot")
-async def predict_foot_endpoint(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+async def predict_foot_endpoint(request: Request) -> Dict[str, Any]:
+    timestamp = datetime.now().isoformat()
+    content_type = request.headers.get("content-type", "")
+    print("=" * 60)
+    print(f"[ENDPOINT] ENDPOINT HIT: /predict/foot | Time: {timestamp} | Method: {request.method} | Content-Type: {content_type}")
+    print(f"   Headers: {dict(request.headers)}")
     try:
-        print("=" * 60)
-        print("FOOT PAYLOAD:", payload)
+        image_input = None
+        local_path = "N/A"
+        storage_url = "N/A"
+        file_size = "N/A"
+        md5_hash = "N/A"
+        multipart_bytes_len = "N/A"
 
-        image_url = (
-            payload.get("imageUrl")
-            or payload.get("image_url")
-            or payload.get("url")
-        )
+        if "multipart/form-data" in content_type:
+            print("FOOT REQUEST TYPE: multipart/form-data")
+            form = await request.form()
+            file_obj = form.get("file") or form.get("image")
+            if file_obj and hasattr(file_obj, "read"):
+                image_input = await file_obj.read()
+                try:
+                    with open("uploaded_debug.jpg", "wb") as f_out:
+                        f_out.write(image_input)
+                    print("[ROUTE] [OK] Saved uploaded multipart image to uploaded_debug.jpg")
+                except Exception as save_err:
+                    print(f"[ROUTE] [WARN] Could not save uploaded_debug.jpg: {save_err}")
+                multipart_bytes_len = f"{len(image_input)} bytes"
+                file_size = f"{len(image_input)} bytes"
+                import hashlib
+                md5_hash = hashlib.md5(image_input).hexdigest()
+                local_path = getattr(file_obj, "filename", "uploaded_multipart_file")
+            else:
+                image_input = form.get("imageUrl") or form.get("image_url")
+                storage_url = str(image_input)
+        else:
+            payload = await request.json()
+            print("FOOT PAYLOAD:", payload)
+            print("FOOT JSON PAYLOAD:", payload)
+            image_input = (
+                payload.get("imageUrl")
+                or payload.get("image_url")
+                or payload.get("url")
+            )
+            if isinstance(image_input, str):
+                if image_input.startswith(("http://", "https://")):
+                    storage_url = image_input
+                else:
+                    clean_path = image_input.replace("file://", "")
+                    local_path = clean_path
+                    if os.path.exists(clean_path):
+                        with open(clean_path, "rb") as f:
+                            b = f.read()
+                            file_size = f"{len(b)} bytes"
+                            import hashlib
+                            md5_hash = hashlib.md5(b).hexdigest()
 
-        print("FOOT IMAGE URL:", image_url)
+        print("==================================================")
+        print("BACKEND PREDICT FOOT CALL LOGS:")
+        print(f"  - Local Image Path    : {local_path}")
+        print(f"  - Storage URL         : {storage_url}")
+        print(f"  - File Size           : {file_size}")
+        print(f"  - MD5 Hash            : {md5_hash}")
+        print(f"  - Multipart Bytes Len : {multipart_bytes_len}")
+        print("==================================================")
 
         result = predict_foot(
-            image_url=image_url,
+            image_url=image_input,
             model=request.app.state.model_registry.foot_model,
         )
 
@@ -133,7 +209,7 @@ async def predict_foot_endpoint(request: Request, payload: Dict[str, Any]) -> Di
         return {"success": True, **result}
 
     except Exception as exc:
-        print("❌ FOOT ENDPOINT ERROR:", exc)
+        print("[ROUTE] [ERROR] FOOT ENDPOINT ERROR:", exc)
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
@@ -142,9 +218,14 @@ async def predict_foot_endpoint(request: Request, payload: Dict[str, Any]) -> Di
 
 
 @router.post("/predict/final")
-async def predict_final_endpoint(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+async def predict_final_endpoint(request: Request) -> Dict[str, Any]:
+    timestamp = datetime.now().isoformat()
+    content_type = request.headers.get("content-type", "")
+    print("=" * 60)
+    print(f"[ENDPOINT] ENDPOINT HIT: /predict/final | Time: {timestamp} | Method: {request.method} | Content-Type: {content_type}")
+    print(f"   Headers: {dict(request.headers)}")
     try:
-        print("=" * 60)
+        payload = await request.json()
         print("FINAL PREDICTION PAYLOAD:", payload)
         assessment_result = payload.get("assessment")
         retina_result = payload.get("retina") or payload.get("retina_result")
@@ -174,7 +255,7 @@ async def predict_final_endpoint(request: Request, payload: Dict[str, Any]) -> D
     except HTTPException:
         raise
     except Exception as exc:
-        print("❌ FINAL ENDPOINT ERROR:")
+        print("[ERROR] FINAL ENDPOINT ERROR:")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Final prediction failed: {exc}") from exc
 

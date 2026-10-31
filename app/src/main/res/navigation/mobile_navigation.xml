@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@id/splashFragment">
+
+    <fragment
+        android:id="@+id/splashFragment"
+        android:name="com.diabeticai.app.ui.splash.SplashFragment"
+        android:label="Splash"
+        tools:layout="@layout/fragment_splash">
+        <action
+            android:id="@+id/action_splash_to_login"
+            app:destination="@id/loginFragment"
+            app:popUpTo="@id/splashFragment"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_splash_to_dashboard"
+            app:destination="@id/dashboardFragment"
+            app:popUpTo="@id/splashFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/loginFragment"
+        android:name="com.diabeticai.app.ui.login.LoginFragment"
+        android:label="Login"
+        tools:layout="@layout/fragment_login">
+        <action
+            android:id="@+id/action_login_to_register"
+            app:destination="@id/registerFragment" />
+        <action
+            android:id="@+id/action_login_to_dashboard"
+            app:destination="@id/dashboardFragment"
+            app:popUpTo="@id/loginFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/registerFragment"
+        android:name="com.diabeticai.app.ui.login.RegisterFragment"
+        android:label="Register"
+        tools:layout="@layout/fragment_register">
+        <action
+            android:id="@+id/action_register_to_dashboard"
+            app:destination="@id/dashboardFragment"
+            app:popUpTo="@id/registerFragment"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_register_to_login"
+            app:destination="@id/loginFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/dashboardFragment"
+        android:name="com.diabeticai.app.ui.dashboard.DashboardFragment"
+        android:label="Home"
+        tools:layout="@layout/fragment_dashboard">
+        <action
+            android:id="@+id/action_dashboard_to_assessment"
+            app:destination="@id/diabetesAssessmentFragment" />
+        <action
+            android:id="@+id/action_dashboard_to_foot"
+            app:destination="@id/footScanFragment" />
+        <action
+            android:id="@+id/action_dashboard_to_eye"
+            app:destination="@id/eyeScanFragment" />
+        <action
+            android:id="@+id/action_dashboard_to_care"
+            app:destination="@id/personalizedCareFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/diabetesAssessmentFragment"
+        android:name="com.diabeticai.app.ui.assessment.DiabetesAssessmentFragment"
+        android:label="Assessment"
+        tools:layout="@layout/fragment_diabetes_assessment" />
+
+    <fragment
+        android:id="@+id/footScanFragment"
+        android:name="com.diabeticai.app.ui.foot.FootScanFragment"
+        android:label="Foot Ulcer Screening"
+        tools:layout="@layout/fragment_foot_ulcer" />
+
+    <fragment
+        android:id="@+id/eyeScanFragment"
+        android:name="com.diabeticai.app.ui.eye.EyeScanFragment"
+        android:label="Retina Screening"
+        tools:layout="@layout/fragment_retina" />
+
+    <fragment
+        android:id="@+id/personalizedCareFragment"
+        android:name="com.diabeticai.app.ui.care.PersonalizedCareFragment"
+        android:label="Personalized Care"
+        tools:layout="@layout/fragment_personalized_care" />
+
+    <fragment
+        android:id="@+id/historyFragment"
+        android:name="com.diabeticai.app.ui.history.HistoryFragment"
+        android:label="History"
+        tools:layout="@layout/fragment_history" />
+
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="com.diabeticai.app.ui.profile.ProfileFragment"
+        android:label="Profile"
+        tools:layout="@layout/fragment_profile" />
+
+</navigation>

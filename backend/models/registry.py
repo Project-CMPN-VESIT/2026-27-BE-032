@@ -50,10 +50,34 @@ class ModelRegistry:
         return tf.keras.models.load_model(path)
 
     def _load_torch(self, path: Path):
-        model = torch.load(path, map_location="cpu")
-        if hasattr(model, "eval"):
-            model.eval()
-        return model
+        obj = torch.load(path, map_location="cpu")
+        if isinstance(obj, dict) or type(obj).__name__ == "OrderedDict":
+            print(f"[REGISTRY] PyTorch model at {path} is a state_dict. Instantiating ViT model architecture...")
+            try:
+                from transformers import ViTForImageClassification
+                model = ViTForImageClassification.from_pretrained(
+                    "google/vit-base-patch16-224",
+                    num_labels=5,
+                    ignore_mismatched_sizes=True,
+                )
+                model.load_state_dict(obj, strict=False)
+                model.eval()
+                print("[REGISTRY] [OK] Successfully loaded state_dict into ViTForImageClassification!")
+                return model
+            except Exception as exc:
+                print(f"[REGISTRY] [WARN] ViT instantiation failed ({exc}). Falling back to ResNet-18 architecture...")
+                import torchvision.models as tv_models
+                import torch.nn as nn
+                model = tv_models.resnet18()
+                model.fc = nn.Linear(model.fc.in_features, 5)
+                model.load_state_dict(obj, strict=False)
+                model.eval()
+                print("[REGISTRY] [OK] Successfully loaded state_dict into ResNet-18!")
+                return model
+        else:
+            if hasattr(obj, "eval"):
+                obj.eval()
+            return obj
 
     def _load_auto(self, path: Path):
         suffix = path.suffix.lower()
@@ -83,21 +107,21 @@ class ModelRegistry:
             path = self._resolve_model_path(key, configured_path)
 
             if path is None:
-                print(f"FAILED to load {key} model: Model file path not found (Configured: {configured_path})")
+                print(f"[REGISTRY] [WARN] FAILED to load {key} model: Model file path not found (Configured: {configured_path})")
                 logger.warning("%s model not found.", key)
                 setattr(self, f"{key}_model", None)
                 loaded[key] = None
                 continue
 
-            print(f"Model [{key}] path: {path.absolute()}")
+            print(f"[REGISTRY] Model [{key}] path: {path.absolute()}")
             try:
                 model = self._load_auto(path)
                 setattr(self, f"{key}_model", model)
                 loaded[key] = str(path)
-                print(f"✅ {success_msg}")
+                print(f"[REGISTRY] [OK] {success_msg}")
                 logger.info("%s model loaded successfully from %s", key, path)
             except Exception as e:
-                print(f"❌ FAILED to load {key} model from {path}: {e}")
+                print(f"[REGISTRY] [ERROR] FAILED to load {key} model from {path}: {e}")
                 traceback.print_exc()
                 logger.exception("Failed loading %s model", key)
                 setattr(self, f"{key}_model", None)

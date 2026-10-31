@@ -1,0 +1,9 @@
+
+path: C:/Capstone Project/option2/dataset/DFU
+
+train: Transfer-Learning images
+val: TestSet
+
+nc: 1
+names:
+  - ulcer
