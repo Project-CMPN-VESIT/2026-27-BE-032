@@ -5,7 +5,8 @@ import os
 import sys
 
 CLOUDFLARED_PATH = r"C:\Program Files (x86)\cloudflared\cloudflared.exe"
-FLUTTER_CONSTANTS_PATH = r"c:\Capstone Project\option2\DiabeticAI_Flutter\lib\utils\constants.dart"
+_base_dir = os.path.dirname(os.path.abspath(__file__))
+FLUTTER_CONSTANTS_PATH = os.path.join(_base_dir, "DiabeticAI_Flutter", "lib", "utils", "constants.dart")
 
 def start_tunnel():
     print(f"🚀 Starting Cloudflare Tunnel using {CLOUDFLARED_PATH}...")

@@ -296,18 +296,19 @@ def _parse_vlm_json_response(text: str, model_name: str) -> Optional[Dict[str, A
 
 def _call_gemini_vision_with_retry(pil_img: Image.Image, api_key: str) -> Dict[str, Any]:
     """
-    Calls Gemini Vision model with fallback model names. Retries across models before giving up.
+    Calls Gemini Vision model with fallback model names. Uses REST transport and fast timeout.
     """
     import google.generativeai as genai
-    genai.configure(api_key=api_key)
+    try:
+        genai.configure(api_key=api_key, transport="rest")
+    except Exception:
+        genai.configure(api_key=api_key)
 
-    # Models to attempt in order of preference (active and tested models with separate quotas)
+    # Active production Gemini Vision models in order of preference
     models_to_try = [
-        "gemini-3.5-flash",
-        "gemini-3.1-flash-lite",
-        "gemini-3.5-flash-lite",
-        "gemini-3.8-flash",
-        "gemini-flash-latest"
+        "gemini-flash-latest",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
     ]
 
     print("[VLM] Gemini Prompt Sent:")
@@ -316,30 +317,30 @@ def _call_gemini_vision_with_retry(pil_img: Image.Image, api_key: str) -> Dict[s
     print("-" * 50)
 
     last_error = None
-    for attempt in range(2):  # Try initial call, retry once if failed
-        for model_name in models_to_try:
-            try:
-                print(f"[VLM] Calling Gemini Vision model '{model_name}' (Attempt {attempt + 1})...")
-                print(f"[VLM] Image sent to Gemini: size={pil_img.size}, mode={pil_img.mode}")
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content([VLM_PROMPT, pil_img])
-                if response and response.text:
-                    raw_text = response.text.strip()
-                    print("================ GEMINI RAW RESPONSE ================")
-                    print(raw_text)
-                    print("=====================================================")
-                    parsed = _parse_vlm_json_response(raw_text, model_name=model_name)
-                    if parsed:
-                        print(f"[VLM] Parsed response: prediction='{parsed.get('prediction')}', confidence={parsed.get('confidence')}%")
-                        return parsed
-            except Exception as exc:
-                last_error = exc
-                print(f"[WARN] Gemini VLM model '{model_name}' attempt {attempt + 1} failed: {exc}")
-                # Always continue to try the next model candidate if quota (429) or deprecated (404)
-                continue
-        time.sleep(1)
+    for model_name in models_to_try:
+        try:
+            print(f"[VLM] Calling Gemini Vision model '{model_name}'...")
+            print(f"[VLM] Image sent to Gemini: size={pil_img.size}, mode={pil_img.mode}")
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(
+                [VLM_PROMPT, pil_img],
+                request_options={"timeout": 12}
+            )
+            if response and response.text:
+                raw_text = response.text.strip()
+                print("================ GEMINI RAW RESPONSE ================")
+                print(raw_text)
+                print("=====================================================")
+                parsed = _parse_vlm_json_response(raw_text, model_name=model_name)
+                if parsed:
+                    print(f"[VLM] Parsed response: prediction='{parsed.get('prediction')}', confidence={parsed.get('confidence')}%")
+                    return parsed
+        except Exception as exc:
+            last_error = exc
+            print(f"[WARN] Gemini VLM model '{model_name}' failed: {exc}")
+            continue
 
-    raise RuntimeError(f"Gemini VLM failed after retry: {last_error}")
+    raise RuntimeError(f"Gemini VLM failed across all candidates: {last_error}")
 
 
 def _analyze_image_offline_opencv(pil_img: Image.Image) -> Dict[str, Any]:

@@ -7,11 +7,25 @@ import '../utils/constants.dart';
 class ApiService {
   late final Dio _dio;
 
+  static String get resolvedBaseUrl {
+    final url = AppConstants.baseUrl;
+    if (url.contains("10.0.2.2")) {
+      if (kIsWeb) return url.replaceAll("10.0.2.2", "localhost");
+      try {
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          return url.replaceAll("10.0.2.2", "127.0.0.1");
+        }
+      } catch (_) {}
+    }
+    return url;
+  }
+
   ApiService() {
-    debugPrint("🌐 [ApiService] Initializing Dio client with baseUrl = ${AppConstants.baseUrl}");
+    final activeBaseUrl = resolvedBaseUrl;
+    debugPrint("🌐 [ApiService] Initializing Dio client with baseUrl = $activeBaseUrl");
     _dio = Dio(
       BaseOptions(
-        baseUrl: AppConstants.baseUrl,
+        baseUrl: activeBaseUrl,
         connectTimeout: const Duration(seconds: 60),
         receiveTimeout: const Duration(seconds: 60),
         sendTimeout: const Duration(seconds: 60),

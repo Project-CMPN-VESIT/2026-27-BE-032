@@ -1,5 +1,18 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
+# Ensure writable local cache directories for Keras and Matplotlib
+_backend_dir = Path(__file__).resolve().parent
+_keras_cache = _backend_dir / ".keras_cache"
+_keras_cache.mkdir(exist_ok=True, parents=True)
+os.environ.setdefault("KERAS_HOME", str(_keras_cache))
+
+_mpl_cache = _backend_dir / ".mpl_cache"
+_mpl_cache.mkdir(exist_ok=True, parents=True)
+os.environ.setdefault("MPLCONFIGDIR", str(_mpl_cache))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

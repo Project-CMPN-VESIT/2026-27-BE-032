@@ -6,9 +6,13 @@ import numpy as np
 
 from pathlib import Path
 
-# Ensure backend module can be imported
-root_dir = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(root_dir))
+# Ensure backend module can be imported from any location
+current_file = Path(__file__).resolve()
+for candidate in [current_file.parent.parent, current_file.parent.parent.parent]:
+    if candidate.exists() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+    if (candidate / "Project_Code").exists() and str(candidate / "Project_Code") not in sys.path:
+        sys.path.insert(0, str(candidate / "Project_Code"))
 
 from backend.services.prediction_service import predict_retina, predict_foot
 

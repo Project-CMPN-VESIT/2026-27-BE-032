@@ -29,6 +29,8 @@ class AppConstants {
   static const Color statusDiabetic = Color(0xFFEF4444);
   static const Color statusDiabeticBg = Color(0xFFFEF2F2);
 
-  // FastAPI REST API Base URL (Cloudflare Tunnel)
-  static const String baseUrl = "https://karen-orange-shaft-southwest.trycloudflare.com";
+  // FastAPI REST API Base URL
+  // Default: http://10.0.2.2:8000 for Android Emulator (automatically mapped to localhost:8000 on Web/Desktop).
+  // When running start_cf_tunnel.py, this line is automatically updated with the live Cloudflare tunnel URL.
+  static const String baseUrl = "http://10.0.2.2:8000";
 }

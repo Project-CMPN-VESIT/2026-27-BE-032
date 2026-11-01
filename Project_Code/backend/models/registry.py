@@ -5,6 +5,11 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import os
+_pkg_dir = Path(__file__).resolve().parent.parent
+os.environ.setdefault("KERAS_HOME", str(_pkg_dir / ".keras_cache"))
+os.environ.setdefault("MPLCONFIGDIR", str(_pkg_dir / ".mpl_cache"))
+
 import joblib
 import tensorflow as tf
 import torch

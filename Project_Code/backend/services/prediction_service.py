@@ -80,20 +80,63 @@ def _calculate_rule_based_risk(data: Dict[str, Any]) -> float:
     return _clamp(score, 5.0, 95.0)
 
 
+BRFSS_MEANS = [
+    0.429, 0.424, 0.963, 28.382, 0.443, 0.041, 0.094,
+    0.757, 0.634, 0.811, 0.056, 0.951, 0.084,
+    2.511, 3.185, 4.242, 0.168, 0.440, 8.032, 5.050, 6.054
+]
+
+BRFSS_STDS = [
+    0.495, 0.494, 0.190, 6.609, 0.497, 0.198, 0.292,
+    0.429, 0.482, 0.391, 0.230, 0.216, 0.278,
+    1.068, 7.413, 8.718, 0.374, 0.496, 3.054, 0.986, 2.071
+]
+
+
+def _build_brfss_feature_vector(data: Dict[str, Any]):
+    import numpy as np
+
+    raw = np.array([
+        float(data.get("HighBP", 0) or 0),
+        float(data.get("HighChol", 0) or 0),
+        float(data.get("CholCheck", 1) or 1),
+        float(data.get("BMI", 24.0) or 24.0),
+        float(data.get("Smoker", 0) or 0),
+        float(data.get("Stroke", 0) or 0),
+        float(data.get("HeartDiseaseorAttack", 0) or 0),
+        float(1 if float(data.get("SittingHours", 1) or 1) <= 2 else 0),
+        float(0 if data.get("JunkFood", 0) == 1 else 1),
+        float(0 if data.get("JunkFood", 0) == 1 else 1),
+        float(data.get("HvyAlcoholConsump", 0) or 0),
+        float(data.get("AnyHealthcare", 1) or 1),
+        float(data.get("NoDocbcCost", 0) or 0),
+        float(data.get("GenHlth", data.get("PhysHlthRating", 2)) or 2),
+        float(data.get("MentHlth", float(data.get("MentHlthRating", 1) or 1) * 3) or 0),
+        float(data.get("PhysHlth", float(data.get("PhysHlthRating", 1) or 1) * 3) or 0),
+        float(data.get("DiffWalk", 0) or 0),
+        float(data.get("Sex", 0) or 0),
+        float(data.get("Age", 5) or 5),
+        float(data.get("Education", 5) or 5),
+        float(data.get("Income", 6) or 6)
+    ], dtype=np.float32)
+
+    means = np.array(BRFSS_MEANS, dtype=np.float32)
+    stds = np.array(BRFSS_STDS, dtype=np.float32)
+    scaled = (raw - means) / stds
+    return np.expand_dims(scaled, axis=0)
+
+
 def _build_assessment_response(data: Dict[str, Any], model: Any = None) -> Dict[str, Any]:
     risk_percentage = _calculate_rule_based_risk(data)
 
     if model is not None and hasattr(model, "predict_proba"):
         try:
-            import numpy as np
-
-            feature_vector = np.array(
-                [[float(data.get(k, 0) or 0) for k in FEATURE_KEYS]],
-                dtype=np.float32,
-            )
+            feature_vector = _build_brfss_feature_vector(data)
             probs = model.predict_proba(feature_vector)[0]
             ml_risk = float(probs[1] * 100.0) if len(probs) > 1 else float(probs[0] * 100.0)
-            risk_percentage = _clamp((risk_percentage * 0.4) + (ml_risk * 0.6), 5.0, 95.0)
+            calibrated_ml_risk = _clamp(ml_risk * 2.5, 5.0, 95.0)
+            risk_percentage = _clamp((risk_percentage * 0.3) + (calibrated_ml_risk * 0.7), 5.0, 95.0)
+            logger.info("Assessment XGBoost prediction: probs=%s, ml_risk=%.1f%%, final_risk=%.1f%%", probs, ml_risk, risk_percentage)
         except Exception as exc:
             logger.warning("Assessment ML model predict failed, using rule-based risk: %s", exc)
 

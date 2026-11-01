@@ -83,32 +83,7 @@ class EyeScanProvider with ChangeNotifier {
     return '$h:$m $period';
   }
 
-  void _useFallback(String imageUrl) {
-    final now = DateTime.now();
-    _scanResult = PredictionResult(
-      id: now.millisecondsSinceEpoch.toString(),
-      type: PredictionType.retinaScan,
-      title: 'Retina Retinopathy Scan',
-      date:
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
-      time: _nowTimeString(),
-      riskLevel: RiskLevel.healthy,
-      predictionLabel: 'Healthy Fundus - No Retinopathy',
-      riskPercentage:
-          PredictionResult.retinaRiskFor('Healthy Fundus - No Retinopathy', 92),
-      confidencePercentage: 92,
-      retinaRiskPercentage:
-          PredictionResult.retinaRiskFor('Healthy Fundus - No Retinopathy', 92),
-      imageUrl: imageUrl.isEmpty ? null : imageUrl,
-      recommendations: const [
-        'Schedule comprehensive dilated eye exam once a year.'
-      ],
-      source: 'demo_fallback',
-    );
-    _uploadSuccess = true;
-    _uploadError = null;
-    debugPrint('Retina fallbackPrediction: demo_fallback');
-  }
+
 
   /// Uploads to Firebase Storage (`users/{uid}/retina/`), runs AI, saves to Firestore.
   Future<void> runRetinaScan({String uid = ''}) async {
@@ -116,8 +91,8 @@ class EyeScanProvider with ChangeNotifier {
     debugPrint("STEP 2: [EyeScanProvider] runRetinaScan() called");
 
     if (_selectedImage == null) {
-      debugPrint("⚠️ [EyeScanProvider] No image selected. Returning fallback.");
-      _useFallback('');
+      debugPrint("⚠️ [EyeScanProvider] No image selected.");
+      _validationError = "Please select a retinal fundus image before starting the scan.";
       notifyListeners();
       return;
     }
@@ -194,31 +169,49 @@ class EyeScanProvider with ChangeNotifier {
 
           final displayUrl = storageUrl ?? _selectedImage?.path ?? '';
 
+          RiskLevel calculatedRisk = RiskLevel.healthy;
+          final predLower = prediction.toLowerCase();
+          if (predLower.contains('proliferative') || predLower.contains('severe')) {
+            calculatedRisk = RiskLevel.highRisk;
+          } else if (predLower.contains('moderate') || (predLower.contains('retinopathy') && !predLower.contains('no retinopathy'))) {
+            calculatedRisk = RiskLevel.diabetic;
+          } else if (predLower.contains('mild')) {
+            calculatedRisk = RiskLevel.prediabetic;
+          }
+
           _scanResult = PredictionResult(
             id: now.millisecondsSinceEpoch.toString(),
             type: PredictionType.retinaScan,
             title: 'Retina Retinopathy Scan',
             date: dateStr,
             time: _nowTimeString(),
-            riskLevel: RiskLevel.healthy,
+            riskLevel: calculatedRisk,
             predictionLabel: prediction,
             riskPercentage: riskPct,
             confidencePercentage: confidence,
             retinaRiskPercentage: riskPct,
             imageUrl: displayUrl,
             source: source,
-            recommendations: [
-              'Schedule comprehensive dilated eye exam once a year.',
-              'Maintain strict control of blood sugar and blood pressure.',
-              'Protect eyes from UV exposure with polarized sunglasses.'
-            ],
+            recommendations: calculatedRisk == RiskLevel.healthy
+                ? const [
+                    'Schedule comprehensive dilated eye exam once a year.',
+                    'Maintain strict control of blood sugar and blood pressure.',
+                    'Protect eyes from UV exposure with polarized sunglasses.'
+                  ]
+                : const [
+                    'Immediate ophthalmologist consultation & dilated eye exam.',
+                    'Strict daily blood sugar monitoring (fasting & post-prandial).',
+                    'Request diagnostic HbA1c laboratory blood test.',
+                    'Implement low-glycemic, heart-healthy dietary changes.'
+                  ],
           );
         } catch (e) {
           debugPrint("❌ [EyeScanProvider] Retina API prediction failed ($e).");
-          final displayUrl = storageUrl ?? _selectedImage?.path ?? '';
-          _useFallback(displayUrl);
-          prediction = _scanResult!.predictionLabel;
-          riskLevel = 'Low';
+          _uploadError = "Connection Error: Unable to reach prediction server ($e). Please verify backend/tunnel status.";
+          _uploadSuccess = false;
+          _isAnalyzing = false;
+          notifyListeners();
+          return;
         }
       }
 

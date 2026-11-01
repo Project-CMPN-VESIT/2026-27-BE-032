@@ -40,8 +40,8 @@ def extract_foot_roi(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray, int]:
         print("[WARN] OpenCV: No distinct skin contours found. Using center crop.")
         margin_h, margin_w = int(h * 0.1), int(w * 0.1)
         cropped = image[margin_h:h-margin_h, margin_w:w-margin_w]
-        mask = np.ones((cropped.shape[0], cropped.shape[1]), dtype=np.uint8) * 255
-        return cv2.resize(cropped, (300, 300)), mask, mask.size
+        mask = np.ones((300, 300), dtype=np.uint8) * 255
+        return cv2.resize(cropped, (300, 300)), mask, int(mask.size)
 
     largest_cnt = max(contours, key=cv2.contourArea)
     x, y, cw, ch = cv2.boundingRect(largest_cnt)
