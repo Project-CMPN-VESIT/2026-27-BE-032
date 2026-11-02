@@ -11,6 +11,7 @@ import '../providers/multi_modal_provider.dart';
 import '../providers/nav_provider.dart';
 import '../providers/scan_data_provider.dart';
 import '../routes/app_routes.dart';
+import '../utils/assessment_payload.dart';
 import '../utils/constants.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_footer.dart';
@@ -48,19 +49,12 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
 
   // 4. Expanded Lifestyle Assessment (Restored)
   String? _sleepDuration;
-  int? _sleepQuality;
   int? _stressLevel;
-  String? _occupation;
-  int? _dailySittingTime;
   int? _exerciseFrequency;
-  int? _walkingMinutes;
   int? _waterIntake;
-  int? _junkFood;
-  int? _sugaryDrinks;
   int? _fruitIntake;
   int? _vegetableIntake;
   bool _smoker = false;
-  int? _alcohol;
 
   // 5. General & Functional Health
   int? _physHlthRating;
@@ -100,11 +94,6 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
       Provider.of<FootScanProvider>(context, listen: false).reset();
       Provider.of<AssessmentProvider>(context, listen: false).reset();
       Provider.of<NavProvider>(context, listen: false).setIndex(1);
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      if (auth.user != null) {
-        Provider.of<ScanDataProvider>(context, listen: false)
-            .loadForUser(auth.user!.uid);
-      }
     });
   }
 
@@ -357,7 +346,13 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                                     child: Text('Multiple family members')),
                               ],
                               onChanged: (val) =>
-                                  setState(() => _familyHistory = val),
+                                  setState(() {
+                                    _familyHistory = val;
+                                    if (val == null || val == 0) {
+                                      _familyMembersCount = null;
+                                      _familyDiabetesType = null;
+                                    }
+                                  }),
                             ),
                             if ((_familyHistory ?? 0) > 0) ...[
                               const SizedBox(height: 12),
@@ -613,50 +608,57 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                       ElevatedButton.icon(
                         onPressed: () async {
                           if (_formKey.currentState?.validate() ?? false) {
-                            final payload = {
-                              'HighBP': _highBp ? 1 : 0,
-                              'HighChol': _highChol ? 1 : 0,
-                              'CholCheck': _cholCheck ? 1 : 0,
-                              'BMI': double.parse(bmi.toStringAsFixed(1)),
-                              'Smoker': _smoker ? 1 : 0,
-                              'Stroke': _stroke ? 1 : 0,
-                              'HeartDiseaseorAttack': _heartDisease ? 1 : 0,
-                              'PhysActivity':
-                                  (_exerciseFrequency ?? 0) > 0 ? 1 : 0,
-                              'Fruits': (_fruitIntake ?? 0) > 0 ? 1 : 0,
-                              'Veggies': (_vegetableIntake ?? 0) > 0 ? 1 : 0,
-                              'HvyAlcoholConsump': (_alcohol ?? 0) >= 2 ? 1 : 0,
-                              'DiffWalk': _diffWalk ? 1 : 0,
-                              'Sex': _sex ?? 1,
-                              'Age': _ageCategory ?? 7,
-                              'FamilyHistory': _familyHistory ?? 0,
-                              'FamilyMembersCount': _familyMembersCount ?? 0,
-                              'FamilyDiabetesType':
-                                  _familyDiabetesType ?? 'None',
-                              'SleepDuration': _sleepDuration ?? '6-8 hrs',
-                              'SleepQuality': _sleepQuality ?? 3,
-                              'StressLevel': _stressLevel ?? 1,
-                              'Occupation': _occupation ?? 'Sedentary',
-                              'DailySittingTime': _dailySittingTime ?? 4,
-                              'WalkingMinutes': _walkingMinutes ?? 30,
-                              'JunkFood': _junkFood ?? 0,
-                              'SugaryDrinks': _sugaryDrinks ?? 0,
-                            };
-                            final score =
-                                provider.calculateAssessmentRisk(payload);
-
-                            multiModal.setAssessmentPayload(
-                                payload, score * 1.5);
-                            scanData.setAssessmentData(payload, score * 1.5);
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                    '✓ Assessment Form Data Saved Successfully'),
-                                backgroundColor: AppConstants.statusHealthy,
-                                behavior: SnackBarBehavior.floating,
-                              ),
+                            final messenger = ScaffoldMessenger.of(context);
+                            final payload = buildAssessmentPayload(
+                              highBp: _highBp,
+                              highChol: _highChol,
+                              cholCheck: _cholCheck,
+                              bmi: double.parse(bmi.toStringAsFixed(1)),
+                              smoker: _smoker,
+                              stroke: _stroke,
+                              heartDisease: _heartDisease,
+                              age: _ageCategory!,
+                              sex: _sex!,
+                              difficultyWalking: _diffWalk,
+                              familyHistory: _familyHistory,
+                              familyMembersCount: _familyMembersCount,
+                              familyDiabetesType: _familyDiabetesType,
+                              physicalActivity: _exerciseFrequency,
+                              waterIntake: _waterIntake,
+                              fruitIntake: _fruitIntake,
+                              vegetableIntake: _vegetableIntake,
+                              sleepDuration: _sleepDuration,
+                              stressLevel: _stressLevel,
+                              physicalHealthRating: _physHlthRating,
+                              mentalHealthRating: _mentHlthRating,
                             );
+                            try {
+                              final result =
+                                  await provider.runTabularAssessment(payload);
+                              multiModal.setAssessmentResult(payload, result);
+                              scanData.setAssessmentData(payload, result);
+
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      '✓ Assessment Form Data Saved Successfully'),
+                                  backgroundColor: AppConstants.statusHealthy,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            } catch (error) {
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      'Assessment could not be saved: $error'),
+                                  backgroundColor:
+                                      AppConstants.statusDiabetic,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
                           }
                         },
                         icon: const Icon(Icons.check_circle_outline),
@@ -782,12 +784,6 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                                           if (eyeScan.retinaResultMap != null) {
                                             multiModal.setRetinaResultMap(
                                                 eyeScan.retinaResultMap!);
-                                          } else {
-                                            multiModal.setRetinaPrediction(
-                                              eyeScan.scanResult!.predictionLabel,
-                                              confidence: eyeScan.scanResult!
-                                                  .confidencePercentage,
-                                            );
                                           }
                                         }
                                       },
@@ -943,13 +939,6 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                                           if (footScan.footResultMap != null) {
                                             multiModal.setFootResultMap(
                                                 footScan.footResultMap!);
-                                          } else {
-                                            multiModal.setFootPrediction(
-                                              footScan
-                                                  .scanResult!.predictionLabel,
-                                              confidence: footScan.scanResult!
-                                                  .confidencePercentage,
-                                            );
                                           }
                                         }
                                       },
@@ -1269,6 +1258,11 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
   }
 
   Widget _buildCombinedResultCard(PredictionResult result) {
+    String withModelConfidence(String label, double? confidence) {
+      if (confidence == null) return label;
+      return '$label (${confidence.toStringAsFixed(1)}% model confidence)';
+    }
+
     final riskColor = result.riskLevel == RiskLevel.healthy
         ? AppConstants.statusHealthy
         : (result.riskLevel == RiskLevel.prediabetic
@@ -1343,13 +1337,14 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
           Center(
             child: Column(
               children: [
-                Text(
-                  '${result.riskPercentage.toStringAsFixed(1)}%',
-                  style: TextStyle(
-                      fontSize: 42,
-                      fontWeight: FontWeight.bold,
-                      color: riskColor),
-                ),
+                if (result.riskPercentage case final percentage?)
+                  Text(
+                    '${percentage.toStringAsFixed(1)}%',
+                    style: TextStyle(
+                        fontSize: 42,
+                        fontWeight: FontWeight.bold,
+                        color: riskColor),
+                  ),
                 Text(
                   result.predictionLabel,
                   textAlign: TextAlign.center,
@@ -1373,10 +1368,44 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                 color: AppConstants.textPrimary),
           ),
           const SizedBox(height: 8),
-          _buildFindingTile('Tabular Assessment Score',
-              '${result.assessmentScore.toStringAsFixed(1)}% Risk Score'),
-          _buildFindingTile('Retinal Scan Result', result.retinaResult),
-          _buildFindingTile('Diabetic Foot Scan Result', result.footResult),
+          if (result.assessmentScore case final score?)
+            _buildFindingTile(
+                'Assessment model probability',
+                '${score.toStringAsFixed(1)}% combined prediabetes/diabetes indicator'),
+          for (final entry in result.assessmentClassProbabilities.entries)
+            _buildFindingTile(
+              switch (entry.key) {
+                'normal' => 'Normal (no-indicator) probability',
+                'borderline' => 'Borderline probability',
+                'diabetes' => 'Diabetes probability',
+                'combined_prediabetes_diabetes' =>
+                  'Combined prediabetes/diabetes probability',
+                _ => entry.key,
+              },
+              entry.value == null
+                  ? 'Not separately modeled'
+                  : '${entry.value!.toStringAsFixed(1)}%',
+            ),
+          if (result.assessmentExplanation case final explanation?
+              when explanation.isNotEmpty)
+            _buildFindingTile('Assessment explanation', explanation),
+          if (result.assessmentProbabilityCalibration
+              case final calibration? when calibration.isNotEmpty)
+            _buildFindingTile('Probability calibration', calibration),
+          _buildFindingTile(
+            'Retinal Scan Result',
+            withModelConfidence(
+              result.retinaResult,
+              result.retinaConfidencePercentage,
+            ),
+          ),
+          _buildFindingTile(
+            'Diabetic Foot Scan Result',
+            withModelConfidence(
+              result.footResult,
+              result.footConfidencePercentage,
+            ),
+          ),
           const Divider(height: 24),
           Row(
             children: [

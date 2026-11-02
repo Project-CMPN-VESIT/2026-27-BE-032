@@ -28,7 +28,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Load latest scan data from Firestore
       final auth = Provider.of<AuthProvider>(context, listen: false);
       if (auth.user != null) {
-        Provider.of<ScanDataProvider>(context, listen: false).loadForUser(auth.user!.uid);
+        Provider.of<ScanDataProvider>(context, listen: false)
+            .loadForUser(auth.user!.uid);
+        Provider.of<MultiModalProvider>(context, listen: false)
+            .loadLatestPredictionForUser(auth.user!.uid);
       }
     });
   }
@@ -81,29 +84,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 4),
                     const Text(
                       'Your multi-modal AI screening overview',
-                      style: TextStyle(fontSize: 13, color: AppConstants.textSecondary),
+                      style: TextStyle(
+                          fontSize: 13, color: AppConstants.textSecondary),
                     ),
                     const SizedBox(height: 20),
 
                     const SizedBox(height: 10),
 
                     // ── Latest Prediction Summary ─────────────────────────
-                    Consumer<MultiModalProvider>(
-                      builder: (ctx, multiModal, _) {
+                    Consumer2<MultiModalProvider, ScanDataProvider>(
+                      builder: (ctx, multiModal, scanData, _) {
                         final latest = multiModal.latestPrediction;
-                        final riskText = latest != null
-                            ? '${latest.riskPercentage.toStringAsFixed(1)}%'
-                            : 'N/A';
-                        final riskColor = latest != null
-                            ? (latest.riskLevel == RiskLevel.healthy
+                        final riskColor = latest == null
+                            ? AppConstants.textSecondary
+                            : (latest.riskLevel == RiskLevel.healthy
                                 ? AppConstants.statusHealthy
-                                : (latest.riskLevel == RiskLevel.prediabetic
+                                : (latest.riskLevel == RiskLevel.prediabetic ||
+                                        latest.riskLevel == RiskLevel.borderline
                                     ? AppConstants.statusPrediabetic
-                                    : AppConstants.statusDiabetic))
-                            : AppConstants.statusHealthy;
+                                    : AppConstants.statusDiabetic));
+                        final riskBackground =
+                            latest?.riskLevel == RiskLevel.healthy
+                                ? AppConstants.statusHealthyBg
+                                : (latest == null
+                                    ? Colors.white
+                                    : AppConstants.statusPrediabeticBg);
 
                         return Column(
                           children: [
+                            if (scanData.loadError != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Text(
+                                  scanData.loadError!,
+                                  style: const TextStyle(
+                                    color: AppConstants.statusDiabetic,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
                             if (latest != null) ...[
                               Container(
                                 margin: const EdgeInsets.only(bottom: 16),
@@ -112,7 +131,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   borderRadius: BorderRadius.circular(16),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.05),
+                                      color:
+                                          Colors.black.withValues(alpha: 0.05),
                                       blurRadius: 10,
                                       offset: const Offset(0, 4),
                                     ),
@@ -123,32 +143,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
                                         const Row(
                                           children: [
-                                            Icon(Icons.auto_awesome, color: AppConstants.primaryBlue, size: 20),
+                                            Icon(Icons.auto_awesome,
+                                                color: AppConstants.primaryBlue,
+                                                size: 20),
                                             SizedBox(width: 8),
                                             Text(
                                               'Latest Multi-Modal Screening',
-                                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 14),
                                             ),
                                           ],
                                         ),
-                                        Text(
-                                          '$riskText Risk',
-                                          style: TextStyle(fontWeight: FontWeight.bold, color: riskColor, fontSize: 13),
+                                        Flexible(
+                                          child: Text(
+                                            latest.overallStatusLabel,
+                                            textAlign: TextAlign.end,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: riskColor,
+                                                fontSize: 12),
+                                          ),
                                         ),
                                       ],
                                     ),
                                     const Divider(height: 16),
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text('Retina: ${latest.retinaResult}',
-                                            style: const TextStyle(fontSize: 11, color: AppConstants.textSecondary)),
-                                        Text('Foot: ${latest.footResult}',
-                                            style: const TextStyle(fontSize: 11, color: AppConstants.textSecondary)),
+                                        Expanded(
+                                          child: Text(
+                                            'Retina: ${latest.retinaStatusLabel}',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                color:
+                                                    AppConstants.textSecondary),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Foot: ${latest.footStatusLabel}',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                color:
+                                                    AppConstants.textSecondary),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ],
@@ -165,28 +218,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               children: [
                                 _buildStatCard(
                                   title: 'Total Scans',
-                                  value: '12',
+                                  value: scanData.isLoading
+                                      ? 'Loading...'
+                                      : (scanData.loadError != null
+                                          ? 'Unavailable'
+                                          : (scanData.totalScans == 0
+                                              ? 'No scans yet'
+                                              : scanData.totalScans
+                                                      ?.toString() ??
+                                                  'Unavailable')),
                                   bgColor: const Color(0xFFEFF6FF),
                                   accentColor: AppConstants.primaryBlue,
                                   icon: Icons.analytics_outlined,
                                 ),
                                 _buildStatCard(
                                   title: 'Risk Level',
-                                  value: riskText,
-                                  bgColor: AppConstants.statusHealthyBg,
+                                  value: latest?.overallStatusLabel ??
+                                      (scanData.loadError == null
+                                          ? 'No assessment yet'
+                                          : 'Unavailable'),
+                                  bgColor: riskBackground,
                                   accentColor: riskColor,
                                   icon: Icons.speed_outlined,
                                 ),
                                 _buildStatCard(
                                   title: 'BMI Index',
-                                  value: '26.8',
+                                  value: scanData.isLoading
+                                      ? 'Loading...'
+                                      : (scanData.loadError != null
+                                          ? 'Unavailable'
+                                          : (scanData.bmi == null
+                                              ? 'Not measured'
+                                              : scanData.bmi!
+                                                  .toStringAsFixed(1))),
                                   bgColor: AppConstants.statusPrediabeticBg,
                                   accentColor: AppConstants.statusPrediabetic,
                                   icon: Icons.monitor_weight_outlined,
                                 ),
                                 _buildStatCard(
                                   title: 'Avg Glucose',
-                                  value: '138 mg/dL',
+                                  value: 'Not recorded',
                                   bgColor: AppConstants.accentCyanLight,
                                   accentColor: AppConstants.accentCyan,
                                   icon: Icons.water_drop_outlined,
@@ -254,10 +325,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             CustomBottomNav(
               currentIndex: navProvider.currentIndex,
               onTap: (index) {
-                Provider.of<NavProvider>(context, listen: false).setIndex(index);
-                if (index == 1) Navigator.pushNamed(context, AppRoutes.diabetesAssessment);
-                if (index == 2) Navigator.pushNamed(context, AppRoutes.history);
-                if (index == 3) Navigator.pushNamed(context, AppRoutes.profile);
+                Provider.of<NavProvider>(context, listen: false)
+                    .setIndex(index);
+                if (index == 1) {
+                  Navigator.pushNamed(context, AppRoutes.diabetesAssessment);
+                }
+                if (index == 2) {
+                  Navigator.pushNamed(context, AppRoutes.history);
+                }
+                if (index == 3) {
+                  Navigator.pushNamed(context, AppRoutes.profile);
+                }
               },
             ),
           ],
@@ -265,8 +343,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-
-
 
   Widget _buildStatCard({
     required String title,
@@ -309,8 +385,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 8),
           Text(
             value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 22,
+              fontSize: 17,
               fontWeight: FontWeight.bold,
               color: AppConstants.textPrimary,
             ),
@@ -365,7 +443,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(12),
@@ -373,7 +452,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.auto_awesome, color: Colors.white, size: 14),
+                              Icon(Icons.auto_awesome,
+                                  color: Colors.white, size: 14),
                               SizedBox(width: 4),
                               Text(
                                 'AI HEALTHCARE',

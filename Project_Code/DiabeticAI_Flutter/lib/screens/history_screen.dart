@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../providers/history_provider.dart';
 import '../providers/nav_provider.dart';
 import '../routes/app_routes.dart';
+import '../services/firestore_service.dart';
 import '../utils/constants.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_footer.dart';
@@ -18,6 +19,55 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
+  Future<void> _confirmClearHistory(String uid) async {
+    final clearHistory = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear History'),
+        content: const Text('Are you sure you want to clear all your history?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear All'),
+          ),
+        ],
+      ),
+    );
+    if (clearHistory != true || !mounted) return;
+
+    try {
+      await Provider.of<HistoryProvider>(context, listen: false)
+          .clearHistory(uid);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('History cleared.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(FirestoreService.userFacingError(
+            error,
+            operation: 'clear prediction history',
+          )),
+        ),
+      );
+    }
+  }
+
+  String _formatTimestamp(DateTime timestamp) {
+    final local = timestamp.toLocal();
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')} • $hour:$minute $period';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +85,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     final historyProvider = Provider.of<HistoryProvider>(context);
     final navProvider = Provider.of<NavProvider>(context);
+    final uid = Provider.of<AuthProvider>(context).user?.uid ?? '';
     final history = historyProvider.history;
 
     return Scaffold(
@@ -49,6 +100,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        onPressed: uid.isEmpty
+                            ? null
+                            : () => _confirmClearHistory(uid),
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Clear History'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     const Text(
                       'Prediction Timeline History',
                       style: TextStyle(
@@ -73,6 +135,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           child: CircularProgressIndicator(),
                         ),
                       ),
+                    ] else if (historyProvider.errorMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          historyProvider.errorMessage!,
+                          style: const TextStyle(
+                              color: AppConstants.statusDiabetic),
+                        ),
+                      ),
                     ] else if (history.isEmpty) ...[
                       Container(
                         padding: const EdgeInsets.all(30),
@@ -93,7 +169,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   color: AppConstants.textSecondary),
                             ),
                             Text(
-                              'Complete Assessment, Retina, and Foot scans to generate your multi-modal prediction report.',
+                              'Your completed assessments and screenings will appear here.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                   fontSize: 12, color: AppConstants.textMuted),
@@ -106,14 +182,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         (item) {
                           Color badgeColor;
                           Color badgeBg;
-                          final retinaRisk = item.retinaRiskPercentage ??
-                              (item.type == PredictionType.retinaScan
-                                  ? item.riskPercentage
-                                  : null);
-                          final footRisk = item.footRiskPercentage ??
-                              (item.type == PredictionType.footUlcerScan
-                                  ? item.riskPercentage
-                                  : null);
+                          final timestamp = item.createdAt;
 
                           switch (item.riskLevel) {
                             case RiskLevel.highRisk:
@@ -122,6 +191,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               badgeBg = AppConstants.statusDiabeticBg;
                               break;
                             case RiskLevel.prediabetic:
+                            case RiskLevel.borderline:
+                            case RiskLevel.inconclusive:
                               badgeColor = AppConstants.statusPrediabetic;
                               badgeBg = AppConstants.statusPrediabeticBg;
                               break;
@@ -164,7 +235,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                               BorderRadius.circular(12),
                                         ),
                                         child: Text(
-                                          '${item.riskPercentage.toStringAsFixed(1)}% RISK',
+                                          item.historyStatusLabel,
                                           style: TextStyle(
                                             color: badgeColor,
                                             fontSize: 11,
@@ -176,7 +247,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${item.date} • ${item.time}',
+                                    timestamp == null
+                                        ? '${item.date} • ${item.time}'
+                                        : _formatTimestamp(timestamp),
                                     style: const TextStyle(
                                       fontSize: 11,
                                       color: AppConstants.textMuted,
@@ -184,30 +257,67 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    item.predictionLabel,
+                                    item.historyStatusLabel,
                                     style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
                                       color: AppConstants.textSecondary,
                                     ),
                                   ),
-                                  if (retinaRisk != null ||
-                                      footRisk != null) ...[
+                                  if (item.assessmentScore != null ||
+                                      item.retinaRiskPercentage != null ||
+                                      item.footRiskPercentage != null ||
+                                      (item.footFinding?.isNotEmpty ?? false) ||
+                                      (item.type ==
+                                              PredictionType.multiModalCombined &&
+                                          (item.retinaResult.isNotEmpty ||
+                                              item.footResult.isNotEmpty))) ...[
                                     const Divider(height: 16),
-                                    if (retinaRisk != null && retinaRisk > 0)
+                                    if (item.assessmentScore != null)
                                       Text(
-                                        'Retina Risk: '
-                                        '${retinaRisk.round()}% '
-                                        '(${item.retinaResult})',
+                                        'Diabetes assessment score: '
+                                        '${item.assessmentScore!.toStringAsFixed(1)}%',
                                         style: const TextStyle(
                                             fontSize: 11,
                                             color: AppConstants.textSecondary),
                                       ),
-                                    if (footRisk != null && footRisk > 0)
+                                    if (item.type ==
+                                            PredictionType.multiModalCombined &&
+                                        item.retinaResult.isNotEmpty)
                                       Text(
-                                        'Foot Risk: '
-                                        '${footRisk.round()}% '
-                                        '(${item.footResult})',
+                                        'Retina result: ${item.retinaStatusLabel}',
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppConstants.textSecondary),
+                                      ),
+                                    if (item.type ==
+                                            PredictionType.multiModalCombined &&
+                                        item.footResult.isNotEmpty)
+                                      Text(
+                                        'Foot result: ${item.footStatusLabel}',
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppConstants.textSecondary),
+                                      ),
+                                    if (item.retinaRiskPercentage != null)
+                                      Text(
+                                        'Retina risk score: '
+                                        '${item.retinaRiskPercentage!.toStringAsFixed(1)}%',
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppConstants.textSecondary),
+                                      ),
+                                    if (item.footRiskPercentage != null)
+                                      Text(
+                                        'Foot risk score: '
+                                        '${item.footRiskPercentage!.toStringAsFixed(1)}%',
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppConstants.textSecondary),
+                                      ),
+                                    if (item.footFinding?.isNotEmpty ?? false)
+                                      Text(
+                                        'Finding: ${item.footFinding}',
                                         style: const TextStyle(
                                             fontSize: 11,
                                             color: AppConstants.textSecondary),

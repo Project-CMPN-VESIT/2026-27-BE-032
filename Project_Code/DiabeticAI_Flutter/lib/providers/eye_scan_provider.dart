@@ -56,6 +56,7 @@ class EyeScanProvider with ChangeNotifier {
         _validationError = validation.errorMessage;
         _selectedImage = null;
         _scanResult = null;
+        _retinaResultMap = null;
         _uploadSuccess = false;
         notifyListeners();
         return;
@@ -65,6 +66,8 @@ class EyeScanProvider with ChangeNotifier {
       _uploadError = null;
       _selectedImage = selectedFile;
       _scanResult = null;
+      _retinaResultMap = null;
+      _uploadedImageUrl = null;
       _uploadSuccess = false;
       notifyListeners();
     }
@@ -90,6 +93,8 @@ class EyeScanProvider with ChangeNotifier {
     debugPrint("--------------------------------------------------");
     debugPrint("STEP 2: [EyeScanProvider] runRetinaScan() called");
 
+    if (_scanResult != null && _uploadSuccess) return;
+    if (_isAnalyzing) return;
     if (_selectedImage == null) {
       debugPrint("⚠️ [EyeScanProvider] No image selected.");
       _validationError = "Please select a retinal fundus image before starting the scan.";
@@ -103,7 +108,6 @@ class EyeScanProvider with ChangeNotifier {
     notifyListeners();
 
     String? storageUrl;
-    String prediction = 'Healthy Fundus - No Retinopathy';
     String? severity;
     String? riskLevel;
     try {
@@ -140,27 +144,46 @@ class EyeScanProvider with ChangeNotifier {
                 imageFile: (storageUrl == null || !storageUrl.startsWith('http')) ? _selectedImage : null,
               )
               .timeout(
-                const Duration(seconds: 35),
+                const Duration(seconds: 60),
               );
 
           debugPrint("STEP 5: [EyeScanProvider] Received Retina API response: $response");
-          prediction = response['prediction'] as String? ??
-              'Healthy Fundus - No Retinopathy';
-          final confidence =
-              (response['confidence'] as num?)?.toDouble() ?? 98.9;
+          if (response['success'] != true ||
+              response['prediction'] is! String ||
+              (response['prediction'] as String).trim().isEmpty) {
+            throw const FormatException(
+                'Retina prediction response is missing its result.');
+          }
+          final prediction = response['prediction'] as String;
+          final confidenceValue = response['confidence'];
+          final confidence = confidenceValue is num &&
+                  confidenceValue.isFinite &&
+                  confidenceValue >= 0 &&
+                  confidenceValue <= 100
+              ? confidenceValue.toDouble()
+              : null;
           final source = response['source'] as String? ?? 'backend';
           severity = response['severity'] as String?;
           riskLevel = response['risk_level'] as String?;
+          if (riskLevel == null || riskLevel.isEmpty) {
+            throw const FormatException(
+                'Retina prediction response is missing its classification.');
+          }
 
-          final riskPct = (response['risk_percentage'] as num?)?.toDouble() ??
-              PredictionResult.retinaRiskFor(prediction, confidence);
+          final riskValue = response['risk_percentage'];
+          final riskPct = riskValue is num &&
+                  riskValue.isFinite &&
+                  riskValue >= 0 &&
+                  riskValue <= 100
+              ? riskValue.toDouble()
+              : null;
 
           _retinaResultMap = {
             'prediction': prediction,
             'risk_percentage': riskPct,
             'confidence': confidence,
-            'severity': severity ?? 'No Retinopathy',
-            'risk_level': riskLevel ?? 'healthy',
+            if (severity != null) 'severity': severity,
+            'risk_level': riskLevel,
           };
 
           final now = DateTime.now();
@@ -180,11 +203,12 @@ class EyeScanProvider with ChangeNotifier {
           }
 
           _scanResult = PredictionResult(
-            id: now.millisecondsSinceEpoch.toString(),
+            id: now.microsecondsSinceEpoch.toString(),
             type: PredictionType.retinaScan,
             title: 'Retina Retinopathy Scan',
             date: dateStr,
             time: _nowTimeString(),
+            createdAt: now,
             riskLevel: calculatedRisk,
             predictionLabel: prediction,
             riskPercentage: riskPct,
@@ -216,28 +240,35 @@ class EyeScanProvider with ChangeNotifier {
       }
 
       // Persist to Firestore
-      if (uid.isNotEmpty) {
-        try {
-          final displayUrl = storageUrl ?? _selectedImage?.path ?? '';
-          debugPrint("STEP 6: [EyeScanProvider] Saving Retina record to Firestore...");
-          await _firestoreService
-              .saveRetinaRecord(
-                uid,
-                displayUrl,
-                _scanResult!.predictionLabel,
-                confidence: _scanResult!.confidencePercentage,
-                riskPercentage: _scanResult!.riskPercentage,
-                riskLevel: riskLevel,
-                severity: severity,
-              )
-              .timeout(const Duration(seconds: 10));
-          await _firestoreService
-              .savePrediction(uid, _scanResult!)
-              .timeout(const Duration(seconds: 10));
-          debugPrint("STEP 6a: [EyeScanProvider] Firestore save complete.");
-        } catch (e) {
-          debugPrint("⚠️ [EyeScanProvider] Retina history save error: $e");
-        }
+      if (uid.isEmpty) {
+        _uploadError = 'Sign in before saving a retina result.';
+        return;
+      }
+      try {
+        final displayUrl = storageUrl ?? _selectedImage?.path ?? '';
+        debugPrint("STEP 6: [EyeScanProvider] Saving Retina record to Firestore...");
+        await _firestoreService
+            .saveRetinaRecord(
+              uid,
+              displayUrl,
+              _scanResult!.predictionLabel,
+              confidence: _scanResult!.confidencePercentage,
+              riskPercentage: _scanResult!.riskPercentage,
+              riskLevel: riskLevel,
+              severity: severity,
+            )
+            .timeout(const Duration(seconds: 10));
+        await _firestoreService
+            .savePrediction(uid, _scanResult!)
+            .timeout(const Duration(seconds: 10));
+        debugPrint("STEP 6a: [EyeScanProvider] Firestore save complete.");
+      } catch (e) {
+        _uploadError = FirestoreService.userFacingError(
+          e,
+          operation: 'save the retina screening result',
+        );
+        _uploadSuccess = false;
+        return;
       }
 
       _uploadSuccess = true;

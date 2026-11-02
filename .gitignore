@@ -57,6 +57,10 @@ firebase-adminsdk*.json
 # Logs & Temporary debug files
 *.log
 cloudflared.log
+*.cf_tunnel_*.txt
+.cf_tunnel_*.txt
+.cf_tunnel_err.txt
+.cf_tunnel_log.txt
 test_output.txt
 live_test_output.txt
 analyze*.txt
@@ -66,6 +70,9 @@ debug_*.jpg
 original_uploaded.jpg
 uploaded_debug.jpg
 cropped_foot.jpg
+
+# Root legacy leftover directories
+/DiabeticAI_Flutter/
 
 # OS
 Thumbs.db

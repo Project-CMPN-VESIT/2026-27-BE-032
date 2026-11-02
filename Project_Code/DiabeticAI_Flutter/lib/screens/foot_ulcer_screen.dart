@@ -44,7 +44,7 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Text(
-                    'Upload Diabetic Foot Image',
+                    'Upload Foot Image',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -117,7 +117,7 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Foot Ulcer Detection',
+                      'Foot Skin Screening',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -126,7 +126,7 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'Upload a diabetic foot image for AI-powered ulcer and lesion detection.',
+                      'Upload a clear foot image for visual skin screening.',
                       style: TextStyle(
                           fontSize: 13, color: AppConstants.textSecondary),
                     ),
@@ -222,9 +222,100 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                               child: provider.selectedImage != null
                                   ? ClipRRect(
                                       borderRadius: BorderRadius.circular(16),
-                                      child: Image.file(
-                                        provider.selectedImage!,
-                                        fit: BoxFit.cover,
+                                      child: LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final metrics = provider
+                                              .footResultMap?['image_metrics'];
+                                          final imageWidth = metrics is Map &&
+                                                  metrics['width'] is num
+                                              ? (metrics['width'] as num)
+                                                  .toDouble()
+                                              : 0.0;
+                                          final imageHeight = metrics is Map &&
+                                                  metrics['height'] is num
+                                              ? (metrics['height'] as num)
+                                                  .toDouble()
+                                              : 0.0;
+                                          final regions = (provider
+                                                      .footResultMap?['regions']
+                                                  as List<dynamic>?) ??
+                                              const <dynamic>[];
+                                          final imageRatio = imageHeight > 0
+                                              ? imageWidth / imageHeight
+                                              : 0.0;
+                                          final boxRatio =
+                                              constraints.maxWidth /
+                                                  constraints.maxHeight;
+                                          final renderedWidth =
+                                              imageRatio > 0 &&
+                                                      imageRatio < boxRatio
+                                                  ? constraints.maxHeight *
+                                                      imageRatio
+                                                  : constraints.maxWidth;
+                                          final renderedHeight =
+                                              imageRatio > 0 &&
+                                                      imageRatio < boxRatio
+                                                  ? constraints.maxHeight
+                                                  : constraints.maxWidth /
+                                                      (imageRatio > 0
+                                                          ? imageRatio
+                                                          : boxRatio);
+                                          final offsetX =
+                                              (constraints.maxWidth -
+                                                      renderedWidth) /
+                                                  2;
+                                          final offsetY =
+                                              (constraints.maxHeight -
+                                                      renderedHeight) /
+                                                  2;
+
+                                          return Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              Image.file(
+                                                provider.selectedImage!,
+                                                fit: BoxFit.contain,
+                                              ),
+                                              if (imageRatio > 0)
+                                                for (final region in regions)
+                                                  if (region is Map &&
+                                                      region['x'] is num &&
+                                                      region['y'] is num &&
+                                                      region['width'] is num &&
+                                                      region['height'] is num)
+                                                    Positioned(
+                                                      left: offsetX +
+                                                          (region['x'] as num)
+                                                                  .toDouble() *
+                                                              renderedWidth,
+                                                      top: offsetY +
+                                                          (region['y'] as num)
+                                                                  .toDouble() *
+                                                              renderedHeight,
+                                                      width: (region['width']
+                                                                  as num)
+                                                              .toDouble() *
+                                                          renderedWidth,
+                                                      height: (region['height']
+                                                                  as num)
+                                                              .toDouble() *
+                                                          renderedHeight,
+                                                      child: DecoratedBox(
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: Colors.red
+                                                              .withValues(
+                                                                  alpha: 0.12),
+                                                          border: Border.all(
+                                                            color: Colors.red,
+                                                            width: 2,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                            ],
+                                          );
+                                        },
                                       ),
                                     )
                                   : const Column(
@@ -238,7 +329,7 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                                         ),
                                         SizedBox(height: 8),
                                         Text(
-                                          'Tap to Upload Diabetic Foot Image',
+                                          'Tap to Upload Foot Image',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             color: AppConstants.primaryBlue,
@@ -246,7 +337,7 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                                         ),
                                         SizedBox(height: 4),
                                         Text(
-                                          'Accepts Diabetic Foot & Ulcer Scans Only',
+                                          'Use a clear, well-lit image of the foot',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: AppConstants.textSecondary,
@@ -273,8 +364,10 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                               onPressed: provider.isAnalyzing
                                   ? null
                                   : () {
-                                      debugPrint("--------------------------------------------------");
-                                      debugPrint("STEP 1: [FootScreen] Analyze Foot Lesion button pressed");
+                                      debugPrint(
+                                          "--------------------------------------------------");
+                                      debugPrint(
+                                          "STEP 1: [FootScreen] Analyze Foot Lesion button pressed");
                                       provider.runFootScan(uid: uid);
                                     },
                               child: provider.isAnalyzing
@@ -293,7 +386,7 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                                         Text('Uploading & Analyzing...'),
                                       ],
                                     )
-                                  : const Text('Analyze Foot Lesion'),
+                                  : const Text('Analyze Foot Image'),
                             ),
                           ],
                         ],
@@ -394,30 +487,32 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text(
-                                  'AI Foot Analysis Result',
+                                  'Foot Image Screening Result',
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.bold,
                                     color: AppConstants.textPrimary,
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppConstants.primaryBlueLight,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    '${provider.scanResult!.confidencePercentage.toStringAsFixed(0)}% Confidence',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppConstants.primaryBlue,
-                                    ),
+                                Text(
+                                  provider.footResultMap?['screening_mode'] ==
+                                          'actual-upload'
+                                      ? 'OPENCV PRELIMINARY SCREENING'
+                                      : 'IMAGE QUALITY CHECK',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppConstants.textSecondary,
                                   ),
                                 ),
                               ],
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Preliminary screening only; not clinically validated or a diagnosis.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppConstants.textSecondary,
+                              ),
                             ),
                             const SizedBox(height: 10),
                             Text(
@@ -425,33 +520,104 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.bold,
-                                color: provider.scanResult!.predictionLabel
-                                        .toLowerCase()
-                                        .contains('no lesion')
-                                    ? AppConstants.statusHealthy
-                                    : AppConstants.statusDiabetic,
+                                color: switch (
+                                    provider.scanResult!.predictionLabel) {
+                                  'NORMAL' => AppConstants.statusHealthy,
+                                  'SEVERE FINDING' ||
+                                  'ULCER SUSPECTED' =>
+                                    AppConstants.statusDiabetic,
+                                  'INCONCLUSIVE' => AppConstants.textSecondary,
+                                  _ => AppConstants.statusPrediabetic,
+                                },
                               ),
                             ),
-                            if (provider.footResultMap != null &&
-                                provider.footResultMap!['severity'] != null) ...[
-                              const SizedBox(height: 4),
+                            const SizedBox(height: 8),
+                            Text(
+                              provider.scanResult!.footResult,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppConstants.textPrimary,
+                              ),
+                            ),
+                            if (provider.footResultMap?['image_metrics']
+                                is Map) ...[
+                              const SizedBox(height: 8),
+                              Builder(
+                                builder: (context) {
+                                  final metrics = provider
+                                      .footResultMap!['image_metrics'] as Map;
+                                  final sharpness = metrics['sharpness'];
+                                  final brightness = metrics['brightness_mean'];
+                                  final regionCount =
+                                      metrics['localized_region_count'];
+                                  return Text(
+                                    'OpenCV metrics: ${sharpness is num ? 'sharpness ${sharpness.toStringAsFixed(1)}' : ''}'
+                                    '${sharpness is num && brightness is num ? ', ' : ''}'
+                                    '${brightness is num ? 'brightness ${brightness.toStringAsFixed(1)}' : ''}'
+                                    '${(sharpness is num || brightness is num) && regionCount is num ? ', ' : ''}'
+                                    '${regionCount is num ? 'localized regions ${regionCount.toInt()}' : ''}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppConstants.textSecondary,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                            if (provider.footResultMap?['confidence'] is num &&
+                                (provider.footResultMap!['confidence'] as num)
+                                    .isFinite &&
+                                (provider.footResultMap!['confidence']
+                                        as num) >=
+                                    0 &&
+                                (provider.footResultMap!['confidence']
+                                        as num) <=
+                                    100) ...[
+                              const SizedBox(height: 6),
                               Text(
-                                'Severity: ${provider.footResultMap!['severity']}',
+                                'Model-reported confidence: ${(provider.footResultMap!['confidence'] as num).toStringAsFixed(1)}%',
                                 style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
                                   color: AppConstants.textSecondary,
                                 ),
                               ),
                             ],
-                            if (provider.footResultMap != null &&
-                                provider.footResultMap!['reason'] != null) ...[
+                            if ((provider.footResultMap?['regions']
+                                        as List<dynamic>?)
+                                    ?.isNotEmpty ==
+                                true) ...[
+                              const SizedBox(height: 8),
+                              for (final (index, region)
+                                  in (provider.footResultMap!['regions']
+                                          as List<dynamic>)
+                                      .indexed)
+                                Text(
+                                  'Region ${index + 1}: ${region['label'] ?? 'Review required'}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppConstants.textPrimary,
+                                  ),
+                                ),
+                            ],
+                            if (provider.footResultMap?['status'] ==
+                                'INCONCLUSIVE') ...[
                               const SizedBox(height: 8),
                               Text(
                                 provider.footResultMap!['reason'] as String,
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: AppConstants.textPrimary,
+                                ),
+                              ),
+                            ],
+                            if (provider.footResultMap?['demo_mode']
+                                is String) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                provider.footResultMap!['demo_mode'] as String,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppConstants.textSecondary,
                                 ),
                               ),
                             ],

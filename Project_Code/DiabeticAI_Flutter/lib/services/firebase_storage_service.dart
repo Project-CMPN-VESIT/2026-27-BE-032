@@ -45,11 +45,23 @@ class FirebaseStorageService {
       );
 
       final uploadTask = ref.putFile(imageFile, metadata);
-      final snapshot = await uploadTask;
-      final downloadUrl = await snapshot.ref.getDownloadURL();
+      final snapshot = await uploadTask.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw FirebaseStorageUploadException(
+          'Firebase Storage upload timed out after 5s. Fast-falling back to direct API upload.',
+        ),
+      );
+      final downloadUrl = await snapshot.ref.getDownloadURL().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw FirebaseStorageUploadException(
+          'Firebase Storage getDownloadURL timed out after 5s. Fast-falling back to direct API upload.',
+        ),
+      );
 
       debugPrint('[FirebaseStorage] ✅ UPLOAD SUCCESS: $downloadUrl');
       return downloadUrl;
+    } on FirebaseStorageUploadException {
+      rethrow;
     } on FirebaseException catch (e) {
       debugPrint('[FirebaseStorage] ❌ UPLOAD FAILED: ${e.code} - ${e.message}');
       throw FirebaseStorageUploadException(

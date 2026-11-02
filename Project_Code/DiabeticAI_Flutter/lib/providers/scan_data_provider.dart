@@ -1,15 +1,16 @@
-import 'package:flutter/material.dart';
-import 'dart:async';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../services/firestore_service.dart';
-import '../services/api_service.dart';
 
-/// Central provider for cross-module scan state.
-/// Loads and persists retina & foot Firebase Storage URLs + AI results from Firestore.
-/// Screens check [isReadyForFinalPrediction] to enable the combined prediction.
+/// Central provider for cross-module scan state and the signed-in user's latest
+/// saved screening data.
 class ScanDataProvider with ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
-  final ApiService _apiService = ApiService();
+  String? _ownerUid;
+  String? _loadError;
+  bool _isLoading = false;
+  int _loadGeneration = 0;
+  int? _totalScans;
+  double? _bmi;
 
   // ── Retina ─────────────────────────────────────────────────────────────────
   String? _retinaUrl;
@@ -25,7 +26,7 @@ class ScanDataProvider with ChangeNotifier {
   bool _assessmentDone = false;
   Map<String, dynamic>? _assessmentPayload;
   Map<String, dynamic>? _assessmentResult;
-  double _assessmentScore = 0.0;
+  double? _assessmentScore;
 
   // ── Getters ────────────────────────────────────────────────────────────────
   String? get retinaUrl => _retinaUrl;
@@ -39,24 +40,93 @@ class ScanDataProvider with ChangeNotifier {
   bool get assessmentDone => _assessmentDone;
   Map<String, dynamic>? get assessmentPayload => _assessmentPayload;
   Map<String, dynamic>? get assessmentResult => _assessmentResult;
-  double get assessmentScore => _assessmentScore;
+  double? get assessmentScore => _assessmentScore;
+  int? get totalScans => _totalScans;
+  double? get bmi => _bmi;
+  String? get loadError => _loadError;
+  bool get isLoading => _isLoading;
 
   bool get isRetinaComplete => (_retinaUrl ?? '').isNotEmpty;
   bool get isFootComplete => (_footUrl ?? '').isNotEmpty;
   bool get isAssessmentComplete => _assessmentDone;
 
-  /// All three modules complete → final prediction can be generated.
   bool get isReadyForFinalPrediction =>
       isRetinaComplete && isFootComplete && isAssessmentComplete;
 
-  // ── Load from Firestore ─────────────────────────────────────────────────────
+  /// Loads only records scoped to the authenticated user's UID.
   Future<void> loadForUser(String uid) async {
-    // Previous Firestore scans must not leak into a new login session.
-    debugPrint(
-        '[ScanDataProvider] automatic session restore disabled for $uid');
+    if (uid.isEmpty) return;
+    if (_ownerUid != uid) {
+      _ownerUid = uid;
+      _clearValues();
+    }
+    final generation = ++_loadGeneration;
+    _isLoading = true;
+    _loadError = null;
+    notifyListeners();
+
+    try {
+      final records = await Future.wait<Object?>([
+        _firestoreService.getAssessmentRecord(uid),
+        _firestoreService.getFootRecord(uid),
+        _firestoreService.getRetinaRecord(uid),
+        _firestoreService.countPredictionHistory(uid),
+      ]);
+      if (_ownerUid != uid || generation != _loadGeneration) return;
+
+      final assessment = records[0] as Map<String, dynamic>?;
+      final foot = records[1] as Map<String, dynamic>?;
+      final retina = records[2] as Map<String, dynamic>?;
+      final payload = _mapValue(assessment?['payload']);
+      final result = _mapValue(assessment?['result']);
+
+      _assessmentPayload = payload;
+      _assessmentResult = result;
+      _assessmentDone = result != null;
+      _assessmentScore = _validPercentage(result?['risk_percentage']);
+      _bmi = _validPositiveNumber(payload?['BMI']);
+      _footUrl = _stringValue(foot?['imageUrl']);
+      _footResult = _stringValue(foot?['prediction']);
+      _retinaUrl = _stringValue(retina?['imageUrl']);
+      _retinaResult = _stringValue(retina?['prediction']);
+      _totalScans = records[3] as int;
+      _isLoading = false;
+      _loadError = null;
+      notifyListeners();
+    } catch (error, stackTrace) {
+      debugPrint('[ScanDataProvider] Failed to load saved scan data: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (_ownerUid == uid && generation == _loadGeneration) {
+        _isLoading = false;
+        _loadError = 'Saved screening data could not be loaded.';
+        notifyListeners();
+      }
+    }
   }
 
-  /// Called by EyeScanProvider after successful Firebase Storage upload + Firestore save.
+  String? _stringValue(Object? value) {
+    if (value is! String || value.trim().isEmpty) return null;
+    return value.trim();
+  }
+
+  Map<String, dynamic>? _mapValue(Object? value) {
+    if (value is! Map) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
+  double? _validPercentage(Object? value) {
+    if (value is! num || !value.isFinite || value < 0 || value > 100) {
+      return null;
+    }
+    return value.toDouble();
+  }
+
+  double? _validPositiveNumber(Object? value) {
+    if (value is! num || !value.isFinite || value <= 0) return null;
+    return value.toDouble();
+  }
+
+  /// Called by EyeScanProvider after a successful scan and Firestore save.
   void setRetinaData(String url, String result) {
     _retinaUrl = url;
     _retinaResult = result;
@@ -64,7 +134,7 @@ class ScanDataProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Called by FootScanProvider after successful Firebase Storage upload + Firestore save.
+  /// Called by FootScanProvider after a successful scan and Firestore save.
   void setFootData(String url, String result) {
     _footUrl = url;
     _footResult = result;
@@ -72,25 +142,22 @@ class ScanDataProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Called by DiabetesAssessmentScreen after form validated.
-  void setAssessmentData(Map<String, dynamic> payload, double score) {
-    _assessmentPayload = payload;
-    _assessmentScore = score;
+  /// Called after the assessment API response has been validated and saved.
+  void setAssessmentData(
+      Map<String, dynamic> payload, Map<String, dynamic> result) {
+    _assessmentPayload = Map<String, dynamic>.from(payload);
+    _assessmentResult = Map<String, dynamic>.from(result);
+    _assessmentScore = _validPercentage(result['risk_percentage']);
+    _bmi = _validPositiveNumber(payload['BMI']);
     _assessmentDone = true;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      unawaited(_saveAssessment(uid, payload));
-    }
-
     notifyListeners();
   }
 
-  Future<void> _saveAssessment(String uid, Map<String, dynamic> payload) async {
-    final result = await _apiService.predictDiabetes(payload);
-    await _firestoreService.saveAssessmentRecord(uid, payload, result);
-  }
-
-  void clearAll() {
+  void _clearValues() {
+    _loadError = null;
+    _isLoading = false;
+    _totalScans = null;
+    _bmi = null;
     _retinaUrl = null;
     _retinaResult = null;
     _retinaUploadedAt = null;
@@ -99,7 +166,13 @@ class ScanDataProvider with ChangeNotifier {
     _footUploadedAt = null;
     _assessmentDone = false;
     _assessmentPayload = null;
-    _assessmentScore = 0.0;
+    _assessmentResult = null;
+    _assessmentScore = null;
+  }
+
+  void clearAll() {
+    _loadGeneration++;
+    _clearValues();
     notifyListeners();
   }
 }

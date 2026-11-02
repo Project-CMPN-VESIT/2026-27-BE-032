@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 class AppConstants {
   static const String appName = 'DiabeticAI';
   static const String appSubtitle = 'AI-Powered Early Detection of Diabetes and Personalized Healthcare';
-  static const String copyrightFooter = '© 2026 DiabeticAI. All rights reserved.';
+  static const String copyrightFooter = 'Â© 2026 DiabeticAI. All rights reserved.';
 
   // Color Palette
   static const Color primaryBlue = Color(0xFF2563EB);
@@ -30,7 +30,17 @@ class AppConstants {
   static const Color statusDiabeticBg = Color(0xFFFEF2F2);
 
   // FastAPI REST API Base URL
-  // Default: http://10.0.2.2:8000 for Android Emulator (automatically mapped to localhost:8000 on Web/Desktop).
-  // When running start_cf_tunnel.py, this line is automatically updated with the live Cloudflare tunnel URL.
-  static const String baseUrl = "http://10.0.2.2:8000";
+  // IMPORTANT: This is automatically updated at runtime by start_cf_tunnel.py
+  // when the Cloudflare tunnel starts. Default fallback:
+  //   - Android Emulator: http://10.0.2.2:8000 (maps to host localhost:8000)
+  //   - Web/Desktop:      http://127.0.0.1:8000
+  // When start_cf_tunnel.py runs, it rewrites this to the live https://*.trycloudflare.com URL.
+  static const String baseUrl = "https://construct-architecture-senators-gazette.trycloudflare.com";
 }
+
+
+
+
+
+
+

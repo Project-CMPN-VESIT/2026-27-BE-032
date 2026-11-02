@@ -4,10 +4,9 @@ from datetime import datetime
 import logging
 import os
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
 
 from backend.services.prediction_service import (
     assess_diabetes,
@@ -15,46 +14,9 @@ from backend.services.prediction_service import (
     predict_final,
     predict_retina,
 )
-
 router = APIRouter(tags=["prediction"])
 logger = logging.getLogger(__name__)
-
-
-class AssessmentPayload(BaseModel):
-    HighBP: Optional[int] = 0
-    HighChol: Optional[int] = 0
-    BMI: Optional[float] = 24.0
-    Stroke: Optional[int] = 0
-    HeartDiseaseorAttack: Optional[int] = 0
-    Age: Optional[int] = 5
-    DiffWalk: Optional[int] = 0
-    FamilyHistory: Optional[int] = 0
-    FamilyMembersCount: Optional[int] = 0
-    StressLevel: Optional[int] = 1
-    JunkFood: Optional[int] = 0
-    SugaryDrinks: Optional[int] = 0
-    SittingHours: Optional[int] = 1
-    SleepDuration: Optional[int] = 3
-    PhysHlthRating: Optional[int] = 1
-    MentHlthRating: Optional[int] = 1
-
-
-class ImagePredictionPayload(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    imageUrl: Optional[str] = Field(default=None, alias="imageUrl")
-    image_url: Optional[str] = None
-    image_path: Optional[str] = None
-
-
-class FinalPredictionPayload(BaseModel):
-    assessment: Optional[Dict[str, Any]] = None
-    retina: Optional[Dict[str, Any]] = None
-    foot: Optional[Dict[str, Any]] = None
-    retinaImage: Optional[str] = None
-    footImage: Optional[str] = None
-    retina_result: Optional[Dict[str, Any]] = None
-    foot_result: Optional[Dict[str, Any]] = None
+_MAX_FOOT_UPLOAD_BYTES = 12 * 1024 * 1024
 
 
 @router.get("/health")
@@ -72,10 +34,25 @@ async def predict_assessment_endpoint(request: Request) -> Dict[str, Any]:
     try:
         payload = await request.json()
         print("ASSESSMENT PAYLOAD:", payload)
-        result = assess_diabetes(payload, model=request.app.state.model_registry.assessment_model)
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=422,
+                detail="Assessment request must be a JSON object.",
+            )
+        assessment_model = request.app.state.model_registry.assessment_model
+        if assessment_model is None:
+            raise HTTPException(
+                status_code=503,
+                detail="The XGBoost assessment model is unavailable; no result was produced.",
+            )
+        result = assess_diabetes(payload, model=assessment_model)
         print("ASSESSMENT RESULT:", result)
         print("=" * 60)
         return {"success": True, **result}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         print("[ERROR] ASSESSMENT ENDPOINT ERROR:", exc)
         traceback.print_exc()
@@ -141,28 +118,28 @@ async def predict_foot_endpoint(request: Request) -> Dict[str, Any]:
     print(f"   Headers: {dict(request.headers)}")
     try:
         image_input = None
-        local_path = "N/A"
-        storage_url = "N/A"
-        file_size = "N/A"
-        md5_hash = "N/A"
-        multipart_bytes_len = "N/A"
+        local_path = None
+        storage_url = None
+        file_size = None
 
         if "multipart/form-data" in content_type:
             print("FOOT REQUEST TYPE: multipart/form-data")
             form = await request.form()
             file_obj = form.get("file") or form.get("image")
             if file_obj and hasattr(file_obj, "read"):
-                image_input = await file_obj.read()
-                try:
-                    with open("uploaded_debug.jpg", "wb") as f_out:
-                        f_out.write(image_input)
-                    print("[ROUTE] [OK] Saved uploaded multipart image to uploaded_debug.jpg")
-                except Exception as save_err:
-                    print(f"[ROUTE] [WARN] Could not save uploaded_debug.jpg: {save_err}")
-                multipart_bytes_len = f"{len(image_input)} bytes"
+                upload_size = getattr(file_obj, "size", None)
+                if upload_size is not None and upload_size > _MAX_FOOT_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Foot image uploads must not exceed 12 MB.",
+                    )
+                image_input = await file_obj.read(_MAX_FOOT_UPLOAD_BYTES + 1)
+                if len(image_input) > _MAX_FOOT_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Foot image uploads must not exceed 12 MB.",
+                    )
                 file_size = f"{len(image_input)} bytes"
-                import hashlib
-                md5_hash = hashlib.md5(image_input).hexdigest()
                 local_path = getattr(file_obj, "filename", "uploaded_multipart_file")
             else:
                 image_input = form.get("imageUrl") or form.get("image_url")
@@ -184,23 +161,36 @@ async def predict_foot_endpoint(request: Request) -> Dict[str, Any]:
                     local_path = clean_path
                     if os.path.exists(clean_path):
                         with open(clean_path, "rb") as f:
-                            b = f.read()
-                            file_size = f"{len(b)} bytes"
-                            import hashlib
-                            md5_hash = hashlib.md5(b).hexdigest()
+                            file_size = f"{os.path.getsize(clean_path)} bytes"
+
+        if image_input is None:
+            raise HTTPException(
+                status_code=422,
+                detail="A foot image file or image URL is required.",
+            )
+        if isinstance(image_input, str) and image_input.startswith(
+            ("http://", "https://")
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Foot screening requires the image bytes. Upload the image "
+                    "using multipart/form-data with the 'file' field."
+                ),
+            )
 
         print("==================================================")
         print("BACKEND PREDICT FOOT CALL LOGS:")
-        print(f"  - Local Image Path    : {local_path}")
-        print(f"  - Storage URL         : {storage_url}")
-        print(f"  - File Size           : {file_size}")
-        print(f"  - MD5 Hash            : {md5_hash}")
-        print(f"  - Multipart Bytes Len : {multipart_bytes_len}")
+        if local_path is not None:
+            print(f"  - Local Image Path    : {local_path}")
+        if storage_url is not None:
+            print(f"  - Storage URL         : {storage_url}")
+        if file_size is not None:
+            print(f"  - File Size           : {file_size}")
         print("==================================================")
 
         result = predict_foot(
             image_url=image_input,
-            model=request.app.state.model_registry.foot_model,
         )
 
         print("FOOT RESULT:", result)
@@ -208,6 +198,8 @@ async def predict_foot_endpoint(request: Request) -> Dict[str, Any]:
 
         return {"success": True, **result}
 
+    except HTTPException:
+        raise
     except Exception as exc:
         print("[ROUTE] [ERROR] FOOT ENDPOINT ERROR:", exc)
         traceback.print_exc()
@@ -233,11 +225,29 @@ async def predict_final_endpoint(request: Request) -> Dict[str, Any]:
         retina_url = payload.get("retinaImage") or (retina_result.get("imageUrl") if isinstance(retina_result, dict) else None)
         foot_url = payload.get("footImage") or (foot_result.get("imageUrl") if isinstance(foot_result, dict) else None)
 
-        if not isinstance(assessment_result, dict) or not assessment_result.get("risk_percentage"):
+        assessment_score = (
+            assessment_result.get("risk_percentage")
+            if isinstance(assessment_result, dict)
+            else None
+        )
+        if (
+            isinstance(assessment_score, bool)
+            or not isinstance(assessment_score, (int, float))
+            or not 0 <= assessment_score <= 100
+        ):
             raise HTTPException(status_code=422, detail="Completed assessment result is required")
-        if not isinstance(retina_result, dict) or not retina_result.get("prediction"):
+        if (
+            not isinstance(retina_result, dict)
+            or not isinstance(retina_result.get("prediction"), str)
+            or not retina_result["prediction"].strip()
+        ):
             raise HTTPException(status_code=422, detail="Completed retina result is required")
-        if not isinstance(foot_result, dict) or not foot_result.get("prediction"):
+        foot_prediction = (
+            foot_result.get("status") or foot_result.get("prediction")
+            if isinstance(foot_result, dict)
+            else None
+        )
+        if not isinstance(foot_prediction, str) or not foot_prediction.strip():
             raise HTTPException(status_code=422, detail="Completed foot result is required")
 
         result = predict_final(assessment_result, retina_result, foot_result)
@@ -261,15 +271,15 @@ async def predict_final_endpoint(request: Request) -> Dict[str, Any]:
 
 
 @router.post("/predict/diabetes")
-async def predict_diabetes_alias(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
-    return await predict_assessment_endpoint(request, payload)
+async def predict_diabetes_alias(request: Request) -> Dict[str, Any]:
+    return await predict_assessment_endpoint(request)
 
 
 @router.post("/predict/foot-ulcer")
-async def predict_foot_ulcer_alias(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
-    return await predict_foot_endpoint(request, payload)
+async def predict_foot_ulcer_alias(request: Request) -> Dict[str, Any]:
+    return await predict_foot_endpoint(request)
 
 
 @router.post("/predict/multi-modal")
-async def predict_multi_modal_alias(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
-    return await predict_final_endpoint(request, payload)
+async def predict_multi_modal_alias(request: Request) -> Dict[str, Any]:
+    return await predict_final_endpoint(request)

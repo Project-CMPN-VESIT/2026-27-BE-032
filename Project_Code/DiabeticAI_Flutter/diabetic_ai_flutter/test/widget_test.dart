@@ -1,10 +1,9 @@
 // This test file is for the placeholder app only.
 // For real DiabeticAI tests, see Project_Code/DiabeticAI_Flutter/test/
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/main.dart';
+import 'package:diabetic_ai_flutter/main.dart';
 
 void main() {
   testWidgets('Placeholder app smoke test', (WidgetTester tester) async {

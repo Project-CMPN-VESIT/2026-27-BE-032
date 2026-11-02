@@ -15,7 +15,8 @@ class CareProvider with ChangeNotifier {
     switch (level) {
       case RiskLevel.healthy:
         return CarePlan(
-          statusSummary: 'Biomarkers, Foot & Retina scans show healthy physiological parameters.',
+          statusSummary:
+              'Biomarkers, Foot & Retina scans show healthy physiological parameters.',
           riskLevel: RiskLevel.healthy,
           dietPlan: [
             'Low Glycemic Index (GI) complex carbohydrates',
@@ -59,10 +60,17 @@ class CareProvider with ChangeNotifier {
         );
       case RiskLevel.prediabetic:
         return CarePlan(
-          statusSummary: 'Slightly elevated glucose / HbA1c. Reversible with targeted lifestyle intervention.',
+          statusSummary:
+              'Slightly elevated glucose / HbA1c. Reversible with targeted lifestyle intervention.',
           riskLevel: RiskLevel.prediabetic,
-          dietPlan: ['Strict carb control (< 45g/meal)', 'Eliminate sugary drinks'],
-          exercisePlan: ['200 mins/week cardio exercise', '3 strength training sessions'],
+          dietPlan: [
+            'Strict carb control (< 45g/meal)',
+            'Eliminate sugary drinks'
+          ],
+          exercisePlan: [
+            '200 mins/week cardio exercise',
+            '3 strength training sessions'
+          ],
           lifestyleAdvice: ['Target 5-7% weight reduction'],
           waterIntake: '3.2 Liters / Day',
           weightGoal: 'Reduce 4 kg in 60 days',
@@ -74,6 +82,65 @@ class CareProvider with ChangeNotifier {
           doctorFollowUpSchedule: 'Follow-up in 30 days',
           weeklyGoals: ['Zero refined sugar for 7 days'],
           monthlyGoals: ['Fasting glucose < 100 mg/dL'],
+        );
+      case RiskLevel.borderline:
+        return CarePlan(
+          statusSummary:
+              'Screening findings need further assessment; no overall percentage is available.',
+          riskLevel: RiskLevel.borderline,
+          dietPlan: [
+            'Continue your usual balanced diet; screening alone does not establish a diagnosis.'
+          ],
+          exercisePlan: ['Follow your usual clinician-guided activity advice.'],
+          lifestyleAdvice: [
+            'Arrange appropriate follow-up for the screening findings.'
+          ],
+          waterIntake: 'Not assessed by screening',
+          weightGoal: 'Not assessed by screening',
+          bloodSugarSchedule: ['Follow your existing monitoring plan.'],
+          medicationReminder: [
+            'Do not start or change medication based on image screening.'
+          ],
+          footCareAdvice: [
+            'Have concerning or changing foot findings reviewed by a clinician.'
+          ],
+          eyeCareAdvice: [
+            'Follow up retinal findings with an eye-care professional.'
+          ],
+          emergencyWarnings: [],
+          doctorFollowUpSchedule:
+              'Arrange further assessment for the screening findings.',
+          weeklyGoals: [],
+          monthlyGoals: [],
+        );
+      case RiskLevel.inconclusive:
+        return CarePlan(
+          statusSummary:
+              'The foot scan could not determine lesion status. Clinical review is recommended.',
+          riskLevel: RiskLevel.inconclusive,
+          dietPlan: ['Continue your clinician-guided diabetes meal plan.'],
+          exercisePlan: [
+            'Avoid pressure on a painful or visibly damaged foot.'
+          ],
+          lifestyleAdvice: ['Do not use this scan to rule out a foot ulcer.'],
+          waterIntake: 'Follow your clinician guidance',
+          weightGoal: 'Not assessed by this foot scan',
+          bloodSugarSchedule: [
+            'Continue your existing glucose monitoring schedule.'
+          ],
+          medicationReminder: [
+            'Do not change medication based on this foot scan.'
+          ],
+          footCareAdvice: [
+            'Have any visible wound assessed by a qualified clinician.'
+          ],
+          eyeCareAdvice: ['Continue routine eye screening.'],
+          emergencyWarnings: [
+            'Seek urgent care for a worsening wound or signs of infection.'
+          ],
+          doctorFollowUpSchedule: 'Arrange clinical review for visible wounds.',
+          weeklyGoals: [],
+          monthlyGoals: [],
         );
       default:
         return CarePlan(
@@ -88,7 +155,9 @@ class CareProvider with ChangeNotifier {
           medicationReminder: ['Insulin / Oral meds as prescribed'],
           footCareAdvice: ['Daily podiatrist-approved foot check'],
           eyeCareAdvice: ['Quarterly ophthalmologist evaluation'],
-          emergencyWarnings: ['IMMEDIATE EMERGENCY: Vision loss or extreme fatigue'],
+          emergencyWarnings: [
+            'IMMEDIATE EMERGENCY: Vision loss or extreme fatigue'
+          ],
           doctorFollowUpSchedule: 'Within 7 days',
           weeklyGoals: ['80% time-in-range (70-180 mg/dL)'],
           monthlyGoals: ['HbA1c < 7.0%'],
