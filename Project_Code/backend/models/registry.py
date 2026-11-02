@@ -18,6 +18,7 @@ from backend.utils.config import (
     ASSESSMENT_MODEL_PATH,
     DEFAULT_MODEL_CANDIDATES,
     FINAL_MODEL_PATH,
+    FOOT_MODEL_PATH,
     MODEL_DIR,
     RETINA_MODEL_PATH,
 )
@@ -82,7 +83,6 @@ class ModelRegistry:
                         num_hidden_layers=12,
                         num_attention_heads=12,
                         intermediate_size=3072,
-                        num_labels=5,
                     )
                 config.num_labels = 5
                 model = ViTForImageClassification(config)
@@ -93,7 +93,8 @@ class ModelRegistry:
                 return model
             except Exception as exc:
                 print(f"[REGISTRY] [WARN] Strict ViT loading had notice ({exc}). Trying strict=False...")
-                config = ViTConfig(num_labels=5)
+                config = ViTConfig()
+                config.num_labels = 5
                 model = ViTForImageClassification(config)
                 model.load_state_dict(obj, strict=False)
                 model.eval()
@@ -121,9 +122,8 @@ class ModelRegistry:
         models = {
             "assessment": ("Assessment XGBoost model loaded", ASSESSMENT_MODEL_PATH),
             "retina": ("Retina ViT (5-class) model loaded", RETINA_MODEL_PATH),
+            "foot": ("Foot ResNet50 (4-class) model loaded", FOOT_MODEL_PATH),
         }
-        self.foot_model = None
-        loaded["foot"] = None
 
         print("=" * 60)
         print("LOADING MACHINE LEARNING MODELS...")

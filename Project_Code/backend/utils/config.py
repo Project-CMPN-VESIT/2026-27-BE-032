@@ -14,6 +14,9 @@ ASSESSMENT_MODEL_PATH = MODEL_DIR / "diabetes_xgboost_model.pkl"
 # Retina model: Prefer the full HuggingFace 5-class directory, fallback to .pth
 RETINA_MODEL_PATH = MODEL_DIR / "retina_vit"
 
+# Foot model: Trained 4-class ResNet50
+FOOT_MODEL_PATH = MODEL_DIR / "dfu_resnet50_fast.keras"
+
 # Final prediction is a Multimodal Decision Fusion Pipeline (predict_final in prediction_service)
 FINAL_MODEL_PATH = None
 
@@ -26,7 +29,10 @@ DEFAULT_MODEL_CANDIDATES = {
         "retina_vit.pth",
         "retina_resnet18.pth",
     ],
-    "foot": [],
+    "foot": [
+        "dfu_resnet50_fast.keras",
+        "dfu_cnn.h5",
+    ],
     "final": [],
 }
 
