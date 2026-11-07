@@ -6,16 +6,25 @@ class CustomFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 24.0,
-      color: AppConstants.bgWhite,
-      alignment: Alignment.center,
-      child: const Text(
-        AppConstants.copyrightFooter,
-        maxLines: 1,
-        style: TextStyle(
-          color: AppConstants.textMuted,
-          fontSize: 11,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 0.0),
+      child: Container(
+        height: 28.0,
+        width: double.infinity,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: AppConstants.bgWhite,
+        ),
+        child: const Text(
+          AppConstants.copyrightFooter,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: AppConstants.textMuted,
+            fontSize: 11,
+            height: 1.2,
+          ),
         ),
       ),
     );

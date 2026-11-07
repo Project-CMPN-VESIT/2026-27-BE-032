@@ -291,23 +291,23 @@ def test_assessment_rejects_an_unavailable_model_instead_of_fabricating_a_score(
         assess_diabetes(_assessment_payload())
 
 
-def test_inconclusive_foot_does_not_change_assessment_score_or_status() -> None:
+def test_inconclusive_foot_is_handled_safely_as_abnormal() -> None:
     response = predict_final(
         {"risk_percentage": 9.1, "prediction": "Normal"},
         {"status": "Normal", "prediction": "Healthy Fundus - No Retinopathy"},
         {"status": "INCONCLUSIVE", "prediction": "INCONCLUSIVE", "risk_percentage": 80.0},
     )
 
-    assert response["overall_risk_percentage"] is None
-    assert response["risk_level"] == "healthy"
-    assert response["prediction_label"] == "Normal"
+    assert response["overall_risk_percentage"] == 20.0
+    assert response["risk_level"] == "prediabetic"
+    assert response["prediction_label"] == "Early Risk"
     assert response["assessment_score"] == 9.1
     assert response["retina_risk_percentage"] is None
     assert response["foot_risk_percentage"] is None
     assert "confidence" not in response
 
 
-def test_inconclusive_foot_is_not_a_positive_finding() -> None:
+def test_inconclusive_foot_is_not_treated_as_normal() -> None:
     response = predict_final(
         {"risk_percentage": 9.1},
         {"prediction": "No Retinopathy"},
@@ -315,21 +315,21 @@ def test_inconclusive_foot_is_not_a_positive_finding() -> None:
     )
 
     assert response["foot_risk_percentage"] is None
-    assert response["overall_risk_percentage"] is None
-    assert response["risk_level"] == "borderline"
-    assert response["prediction_label"] == "Borderline / Further Assessment"
+    assert response["overall_risk_percentage"] == 20.0
+    assert response["risk_level"] == "prediabetic"
+    assert response["prediction_label"] == "Early Risk"
 
 
-def test_normal_modules_produce_normal_overall_status() -> None:
+def test_normal_modules_produce_healthy_normal_overall_status() -> None:
     response = predict_final(
         {"risk_percentage": 9.1, "prediction": "Normal"},
         {"prediction": "Healthy Fundus - No Retinopathy"},
         {"status": "Normal", "prediction": "Normal"},
     )
 
-    assert response["prediction_label"] == "Normal"
+    assert response["prediction_label"] == "Healthy / Normal"
     assert response["risk_level"] == "healthy"
-    assert response["overall_risk_percentage"] is None
+    assert response["overall_risk_percentage"] == 5.0
 
 
 def test_final_result_uses_model_class_and_forwards_only_available_confidence() -> None:
@@ -351,12 +351,12 @@ def test_final_result_uses_model_class_and_forwards_only_available_confidence() 
         {"status": "MILD FINDING", "prediction": "MILD FINDING"},
     )
 
-    assert response["risk_level"] == "borderline"
+    assert response["risk_level"] == "highRisk"
     assert response["assessment_class_probabilities"] == probabilities
     assert response["assessment_explanation"] == "Binary model output."
     assert response["retina_confidence"] == 92.5
     assert response["foot_confidence"] is None
-    assert response["overall_risk_percentage"] is None
+    assert response["overall_risk_percentage"] == 72.0
 
 
 def test_final_result_does_not_forward_invalid_module_confidence() -> None:
@@ -370,18 +370,43 @@ def test_final_result_does_not_forward_invalid_module_confidence() -> None:
     assert response["foot_confidence"] is None
 
 
-def test_ulcer_suspected_produces_further_assessment() -> None:
+def test_early_risk_matrix_rule_for_single_abnormal_input() -> None:
     response = predict_final(
-        {"risk_percentage": 9.1, "prediction": "Normal"},
-        {"prediction": "Healthy Fundus - No Retinopathy"},
-        {"status": "ULCER SUSPECTED", "prediction": "ULCER SUSPECTED"},
+        {"risk_percentage": 4.4, "prediction": "Normal"},
+        {"prediction": "Mild Retinopathy", "confidence": 86.0},
+        {"status": "Normal", "prediction": "Normal"},
     )
 
-    assert response["prediction_label"] == "Borderline / Further Assessment"
+    assert response["prediction_label"] == "Early Risk"
+    assert response["risk_level"] == "prediabetic"
+    assert response["overall_risk_percentage"] == 20.0
+
+
+def test_assessment_abnormal_flag_uses_risk_percentage_threshold() -> None:
+    response = predict_final(
+        {"risk_percentage": 46.06, "prediction": "No combined prediabetes/diabetes indicator predicted", "target": 0},
+        {"prediction": "Healthy Fundus - No Retinopathy"},
+        {"status": "Normal", "prediction": "Normal"},
+    )
+
+    assert response["assessment_abnormal"] is True
+    assert response["prediction_label"] == "Early Risk"
+    assert response["overall_risk_percentage"] == 20.0
+
+
+def test_borderline_matrix_rule_for_two_abnormal_inputs() -> None:
+    response = predict_final(
+        {"risk_percentage": 43.0, "prediction": "Combined prediabetes/diabetes indicator predicted"},
+        {"prediction": "Healthy Fundus - No Retinopathy"},
+        {"status": "SEVERE FINDING", "prediction": "SEVERE FINDING"},
+    )
+
+    assert response["prediction_label"] == "Borderline"
     assert response["risk_level"] == "borderline"
+    assert response["overall_risk_percentage"] == 45.0
 
 
-def test_mild_foot_finding_remains_individual_and_does_not_change_overall() -> None:
+def test_mild_foot_finding_counts_as_abnormal_for_matrix() -> None:
     response = predict_final(
         {"risk_percentage": 5.0, "prediction": "Normal"},
         {"prediction": "Healthy Fundus - No Retinopathy"},
@@ -389,8 +414,8 @@ def test_mild_foot_finding_remains_individual_and_does_not_change_overall() -> N
     )
 
     assert response["foot_result"] == "MILD FINDING"
-    assert response["prediction_label"] == "Normal"
-    assert response["risk_level"] == "healthy"
+    assert response["prediction_label"] == "Early Risk"
+    assert response["risk_level"] == "prediabetic"
 
 
 def test_severe_foot_finding_is_preserved_in_multimodal_result() -> None:
@@ -401,8 +426,8 @@ def test_severe_foot_finding_is_preserved_in_multimodal_result() -> None:
     )
 
     assert response["foot_result"] == "SEVERE FINDING"
-    assert response["prediction_label"] == "Borderline / Further Assessment"
-    assert response["risk_level"] == "borderline"
+    assert response["prediction_label"] == "Early Risk"
+    assert response["risk_level"] == "prediabetic"
 
 
 def test_missing_assessment_score_is_not_replaced() -> None:

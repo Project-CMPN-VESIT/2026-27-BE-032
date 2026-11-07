@@ -13,8 +13,10 @@ class CustomBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      margin: EdgeInsets.fromLTRB(16.0, 8.0, 16.0, bottomInset > 0 ? 8.0 + bottomInset * 0.5 : 8.0),
       decoration: BoxDecoration(
         color: AppConstants.bgWhite,
         borderRadius: BorderRadius.circular(30),
@@ -28,36 +30,42 @@ class CustomBottomNav extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
-        child: BottomNavigationBar(
-          currentIndex: currentIndex,
-          onTap: onTap,
-          backgroundColor: AppConstants.bgWhite,
-          selectedItemColor: AppConstants.primaryBlue,
-          unselectedItemColor: AppConstants.textMuted,
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.assignment_outlined),
-              activeIcon: Icon(Icons.assignment),
-              label: 'Assessment',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.history_outlined),
-              activeIcon: Icon(Icons.history),
-              label: 'History',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Profile',
-            ),
-          ],
+        child: SizedBox(
+          height: 68.0,
+          child: BottomNavigationBar(
+            currentIndex: currentIndex,
+            onTap: onTap,
+            backgroundColor: AppConstants.bgWhite,
+            selectedItemColor: AppConstants.primaryBlue,
+            unselectedItemColor: AppConstants.textMuted,
+            type: BottomNavigationBarType.fixed,
+            elevation: 0,
+            selectedFontSize: 11,
+            unselectedFontSize: 11,
+            iconSize: 22,
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_outlined),
+                activeIcon: Icon(Icons.home),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.assignment_outlined),
+                activeIcon: Icon(Icons.assignment),
+                label: 'Assessment',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.history_outlined),
+                activeIcon: Icon(Icons.history),
+                label: 'History',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person_outline),
+                activeIcon: Icon(Icons.person),
+                label: 'Profile',
+              ),
+            ],
+          ),
         ),
       ),
     );

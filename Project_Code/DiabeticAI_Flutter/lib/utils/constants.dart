@@ -3,7 +3,7 @@
 class AppConstants {
   static const String appName = 'DiabeticAI';
   static const String appSubtitle = 'AI-Powered Early Detection of Diabetes and Personalized Healthcare';
-  static const String copyrightFooter = 'Â© 2026 DiabeticAI. All rights reserved.';
+  static const String copyrightFooter = '© 2026 DiabeticAI. All rights reserved.';
 
   // Color Palette
   static const Color primaryBlue = Color(0xFF2563EB);
@@ -35,8 +35,12 @@ class AppConstants {
   //   - Android Emulator: http://10.0.2.2:8000 (maps to host localhost:8000)
   //   - Web/Desktop:      http://127.0.0.1:8000
   // When start_cf_tunnel.py runs, it rewrites this to the live https://*.trycloudflare.com URL.
-  static const String baseUrl = "https://construct-architecture-senators-gazette.trycloudflare.com";
+  static const String baseUrl = "https://spirits-morrison-toronto-awarded.trycloudflare.com";
 }
+
+
+
+
 
 
 

@@ -261,7 +261,7 @@ def test_full_pipeline():
         assert response.status_code == 200, f"Final endpoint failed: {response.text}"
         final_res = response.json()
         assert final_res.get("success") is True
-        assert final_res.get("overall_risk_percentage") is None
+        assert final_res.get("overall_risk_percentage") == 5.0
         assert final_res["assessment_score"] == assessment_res["risk_percentage"]
         assert final_res["retina_result"] == retina_res["prediction"]
         assert final_res["foot_result"] == foot_res["status"]
@@ -273,7 +273,8 @@ def test_full_pipeline():
         assert final_res["foot_confidence"] is None
         assert "risk_level" in final_res
         assert "care_plan" in final_res
-        print(f"PASS: Final Screening -> assessment score: {final_res['assessment_score']}%, level: '{final_res['risk_level']}', label: '{final_res['prediction_label']}'", flush=True)
+        assert final_res["prediction_label"] == "Healthy / Normal"
+        print(f"PASS: Final Screening -> assessment score: {final_res['assessment_score']}%, overall: {final_res['overall_risk_percentage']}%, level: '{final_res['risk_level']}', label: '{final_res['prediction_label']}'", flush=True)
 
     print("\n" + "=" * 70, flush=True)
     print("ALL ENDPOINT TESTS PASSED!", flush=True)

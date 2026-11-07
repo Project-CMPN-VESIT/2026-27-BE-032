@@ -33,10 +33,10 @@ _MAX_IMAGE_DIMENSION = 8192
 _MAX_IMAGE_PIXELS = 40_000_000
 _MIN_IMAGE_DIMENSION = 160
 _MAX_ANALYSIS_DIMENSION = 1024
-_MIN_BRIGHTNESS = 28.0
-_MAX_BRIGHTNESS = 238.0
-_MIN_CONTRAST = 8.0
-_MIN_SHARPNESS = 1.0
+_MIN_BRIGHTNESS = 20.0
+_MAX_BRIGHTNESS = 245.0
+_MIN_CONTRAST = 5.0
+_MIN_SHARPNESS = 1.1
 _MIN_PHOTOGRAPHIC_ENTROPY = 3.0
 
 
@@ -415,3 +415,8 @@ def analyze_foot_image(image_input: Any) -> Dict[str, Any]:
         "image_metrics": image_metrics,
         "disclaimer": SCREENING_DISCLAIMER,
     }
+
+
+def analyze_foot_opencv(image_input: Any) -> Dict[str, Any]:
+    """Backward-compatible alias used by legacy callers and older diagnostic scripts."""
+    return analyze_foot_image(image_input)

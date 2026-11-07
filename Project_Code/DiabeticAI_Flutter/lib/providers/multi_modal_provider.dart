@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/prediction_result.dart';
-import '../services/api_service.dart';
 import '../services/firestore_service.dart';
 import '../services/image_validation_service.dart';
 
@@ -13,21 +12,59 @@ double? _validRiskPercentage(Object? value) {
   return value.toDouble();
 }
 
-Map<String, double?> _probabilityMap(Object? value) {
-  if (value is! Map) return const {};
-  return {
-    for (final entry in value.entries)
-      if (entry.key is String)
-        entry.key as String: entry.value == null
-            ? null
-            : _validRiskPercentage(entry.value),
-  };
-}
-
 class MultiModalProvider with ChangeNotifier {
-  final ApiService _apiService = ApiService();
   final FirestoreService _firestoreService = FirestoreService();
   final ImagePicker _picker = ImagePicker();
+
+  static Map<String, dynamic> calculateFrontendFusion({
+    required double assessmentScore,
+    required bool retinaAbnormal,
+    required bool footAbnormal,
+  }) {
+    final assessmentStatus = assessmentScore < 35.0 ? 'GOOD' : 'ABNORMAL';
+    final abnormalCount = [assessmentStatus == 'ABNORMAL', retinaAbnormal, footAbnormal]
+        .where((value) => value)
+        .length;
+
+    if (assessmentStatus == 'GOOD' && !retinaAbnormal && !footAbnormal) {
+      return {
+        'predictionLabel': 'Healthy / Normal',
+        'riskPercentage': 5.0,
+        'riskLevel': 'healthy',
+      };
+    }
+
+    final riskScore = switch (abnormalCount) {
+      0 => 5.0,
+      1 => 20.0,
+      2 => 45.0,
+      _ => 72.0,
+    };
+
+    final predictionLabel = switch (abnormalCount) {
+      0 => 'Healthy / Normal',
+      1 => 'Prediabetic / Early Risk',
+      2 => 'Borderline',
+      _ => 'Diabetic / High Risk',
+    };
+
+    final riskLevel = switch (abnormalCount) {
+      0 => 'healthy',
+      1 => 'prediabetic',
+      2 => 'borderline',
+      _ => 'highRisk',
+    };
+
+    return {
+      'predictionLabel': predictionLabel,
+      'riskPercentage': riskScore,
+      'riskLevel': riskLevel,
+      'assessmentStatus': assessmentStatus,
+      'retinaAbnormal': retinaAbnormal,
+      'footAbnormal': footAbnormal,
+      'abnormalCount': abnormalCount,
+    };
+  }
 
   // Input 1: Assessment Payload
   Map<String, dynamic>? _assessmentPayload;
@@ -47,6 +84,7 @@ class MultiModalProvider with ChangeNotifier {
   PredictionResult? _pendingPrediction;
   String? _pendingUid;
   String? _predictionOwnerUid;
+  String? _currentPredictionSignature;
   bool _isAnalyzing = false;
   String? _errorMessage;
 
@@ -108,6 +146,22 @@ class MultiModalProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  String _buildCurrentPredictionSignature() {
+    final assessmentSignature = _assessmentPayload == null
+        ? 'assessment:null'
+        : _assessmentPayload.toString();
+    final assessmentResultSignature = _assessmentResult == null
+        ? 'assessmentResult:null'
+        : _assessmentResult.toString();
+    final retinaSignature = _retinaResultMap == null
+        ? 'retina:null'
+        : _retinaResultMap.toString();
+    final footSignature = _footResultMap == null
+        ? 'foot:null'
+        : _footResultMap.toString();
+    return '$assessmentSignature|$assessmentResultSignature|$retinaSignature|$footSignature|${_retinaImageUrl ?? ''}|${_footImageUrl ?? ''}';
+  }
+
   void setAssessmentResult(
       Map<String, dynamic> payload, Map<String, dynamic> result) {
     if (mapEquals(_assessmentPayload, payload) &&
@@ -121,6 +175,16 @@ class MultiModalProvider with ChangeNotifier {
     _latestPrediction = null;
     _pendingPrediction = null;
     _pendingUid = null;
+    _currentPredictionSignature = null;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  void invalidateCombinedPrediction() {
+    _latestPrediction = null;
+    _pendingPrediction = null;
+    _pendingUid = null;
+    _currentPredictionSignature = null;
     _errorMessage = null;
     notifyListeners();
   }
@@ -137,6 +201,7 @@ class MultiModalProvider with ChangeNotifier {
     _latestPrediction = null;
     _pendingPrediction = null;
     _pendingUid = null;
+    _currentPredictionSignature = null;
     notifyListeners();
   }
 
@@ -146,6 +211,7 @@ class MultiModalProvider with ChangeNotifier {
     _latestPrediction = null;
     _pendingPrediction = null;
     _pendingUid = null;
+    _currentPredictionSignature = null;
     notifyListeners();
   }
 
@@ -157,10 +223,7 @@ class MultiModalProvider with ChangeNotifier {
     _retinaImageFile = imageFile;
     _retinaImageUrl = imageUrl;
     _retinaResultMap = null;
-    _latestPrediction = null;
-    _pendingPrediction = null;
-    _pendingUid = null;
-    notifyListeners();
+    invalidateCombinedPrediction();
   }
 
   void setFootScan({File? imageFile, required String imageUrl}) {
@@ -170,10 +233,7 @@ class MultiModalProvider with ChangeNotifier {
     _footImageFile = imageFile;
     _footImageUrl = imageUrl;
     _footResultMap = null;
-    _latestPrediction = null;
-    _pendingPrediction = null;
-    _pendingUid = null;
-    notifyListeners();
+    invalidateCombinedPrediction();
   }
 
   Future<void> pickRetinaImage(ImageSource source) async {
@@ -197,7 +257,7 @@ class MultiModalProvider with ChangeNotifier {
 
       _errorMessage = null;
       _retinaImageFile = selectedFile;
-      notifyListeners();
+      invalidateCombinedPrediction();
     } catch (e) {
       _errorMessage = 'Failed to select retina image: $e';
       notifyListeners();
@@ -225,7 +285,7 @@ class MultiModalProvider with ChangeNotifier {
 
       _errorMessage = null;
       _footImageFile = selectedFile;
-      notifyListeners();
+      invalidateCombinedPrediction();
     } catch (e) {
       _errorMessage = 'Failed to select foot image: $e';
       notifyListeners();
@@ -278,7 +338,10 @@ class MultiModalProvider with ChangeNotifier {
   /// Combined Multi-Modal Prediction Workflow
   Future<bool> runCombinedMultiModalPrediction(String uid) async {
     if (_isAnalyzing) return false;
-    if (_latestPrediction != null) return true;
+    final currentSignature = _buildCurrentPredictionSignature();
+    if (_latestPrediction != null && _currentPredictionSignature == currentSignature) {
+      return true;
+    }
     if (!isReadyForPrediction) {
       _errorMessage =
           'Complete all three assessments before generating your final diabetes prediction.';
@@ -334,65 +397,41 @@ class MultiModalProvider with ChangeNotifier {
 
     try {
       final assessmentResult = _assessmentResult!;
-      final retinaResult = _retinaResultMap!;
-      final footResult = _footResultMap!;
-      final activeRetinaUrl =
-          (_retinaImageUrl != null && _retinaImageUrl!.startsWith('http'))
-              ? _retinaImageUrl!
-              : '';
-      final activeFootUrl =
-          (_footImageUrl != null && _footImageUrl!.startsWith('http'))
-              ? _footImageUrl!
-              : '';
-      final payload = {
-        'assessment': assessmentResult,
-        'retina': retinaResult,
-        'foot': footResult,
-        'retinaImage': activeRetinaUrl,
-        'footImage': activeFootUrl,
-      };
-      final apiResult = await _apiService.predictMultiModal(payload);
-      if (apiResult['success'] != true) {
-        throw const FormatException('Combined screening API returned no result.');
-      }
-
       final assessmentScore =
-          _validRiskPercentage(apiResult['assessment_score']);
-      final retinaLabel = apiResult['retina_result'];
-      final footLabel = apiResult['foot_result'];
-      final riskLevelValue = apiResult['risk_level'];
-      final predictionLabel = apiResult['prediction_label'];
-      if (assessmentScore == null ||
-          retinaLabel is! String ||
-          retinaLabel.isEmpty ||
-          footLabel is! String ||
-          footLabel.isEmpty ||
-          predictionLabel is! String ||
-          predictionLabel.isEmpty ||
-          riskLevelValue is! String) {
-        throw const FormatException(
-            'Combined screening API response is incomplete.');
-      }
+          _validRiskPercentage(assessmentResult['risk_percentage']) ?? 0.0;
 
-      final bool isRetinaAbnormal =
-          retinaLabel.toLowerCase().contains('retinopathy') &&
-              !retinaLabel.toLowerCase().contains('no retinopathy');
-      final bool isFootAbnormal =
-          footLabel.trim().toLowerCase() == 'ulcer suspected';
+      final retinaText = (_retinaResultMap == null)
+          ? ''
+          : (_retinaResultMap!['prediction'] ?? '').toString();
+      final retinaLower = retinaText.toLowerCase();
+      final bool isRetinaAbnormal = retinaText.isNotEmpty &&
+          !(retinaLower.contains('healthy fundus') ||
+              retinaLower.contains('no retinopathy') ||
+              (retinaLower.contains('healthy') && retinaLower.contains('normal')));
 
-      // Generate Dynamic Care Plan
-      final recommendations = generateDynamicCarePlan(
+      final footMap = _footResultMap ?? const {};
+      final footStatus = (footMap['status'] ?? footMap['prediction'] ?? '')
+          .toString();
+      final footUpper = footStatus.trim().toUpperCase();
+      final bool isFootAbnormal = footStatus.isNotEmpty &&
+          (footUpper.contains('MILD') ||
+              footUpper.contains('SEVERE') ||
+              footUpper.contains('ULCER') ||
+              footUpper.contains('LESION'));
+
+      final fusion = calculateFrontendFusion(
         assessmentScore: assessmentScore,
-        isRetinaAbnormal: isRetinaAbnormal,
-        isFootAbnormal: isFootAbnormal,
+        retinaAbnormal: isRetinaAbnormal,
+        footAbnormal: isFootAbnormal,
       );
 
+      final riskLevelValue = fusion['riskLevel'] as String;
       final riskLevelEnum = switch (riskLevelValue) {
         'healthy' => RiskLevel.healthy,
+        'prediabetic' => RiskLevel.prediabetic,
         'borderline' => RiskLevel.borderline,
-        'inconclusive' => RiskLevel.inconclusive,
-        _ => throw const FormatException(
-            'Combined screening API returned an unsupported status.'),
+        'highRisk' => RiskLevel.highRisk,
+        _ => RiskLevel.inconclusive,
       };
 
       final now = DateTime.now();
@@ -408,6 +447,15 @@ class MultiModalProvider with ChangeNotifier {
       final nextScreeningDate =
           '${nextScreening.year}-${nextScreening.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
+      final overallScore = _validRiskPercentage(fusion['riskPercentage']) ?? 5.0;
+      final retinaLabel = retinaText.isEmpty ? 'Not available' : retinaText;
+      final footLabel = footStatus.isEmpty ? 'Not available' : footStatus;
+      final recommendations = generateDynamicCarePlan(
+        assessmentScore: assessmentScore,
+        isRetinaAbnormal: isRetinaAbnormal,
+        isFootAbnormal: isFootAbnormal,
+      );
+
       final result = PredictionResult(
         id: now.microsecondsSinceEpoch.toString(),
         type: PredictionType.multiModalCombined,
@@ -416,28 +464,18 @@ class MultiModalProvider with ChangeNotifier {
         time: timeStr,
         createdAt: now,
         riskLevel: riskLevelEnum,
-        predictionLabel: predictionLabel,
-        riskPercentage: null,
-        confidencePercentage:
-            _validRiskPercentage(apiResult['confidence']),
+        predictionLabel: fusion['predictionLabel'] as String,
+        riskPercentage: overallScore,
+        confidencePercentage: null,
         assessmentScore: assessmentScore,
-        assessmentClassProbabilities: _probabilityMap(
-          apiResult['assessment_class_probabilities'],
-        ),
-        assessmentExplanation:
-            apiResult['assessment_explanation'] is String
-                ? apiResult['assessment_explanation'] as String
-                : null,
+        assessmentClassProbabilities: const {},
+        assessmentExplanation: 'Frontend rule-based assessment score.',
         assessmentProbabilityCalibration:
-            apiResult['assessment_probability_calibration'] is String
-                ? apiResult['assessment_probability_calibration'] as String
-                : null,
+            'Rule-based demo score; not clinically validated.',
         retinaRiskPercentage: null,
-        retinaConfidencePercentage:
-            _validRiskPercentage(apiResult['retina_confidence']),
+        retinaConfidencePercentage: null,
         footRiskPercentage: null,
-        footConfidencePercentage:
-            _validRiskPercentage(apiResult['foot_confidence']),
+        footConfidencePercentage: null,
         retinaResult: retinaLabel,
         footResult: footLabel,
         carePlanStatus: 'Screening follow-up',
@@ -445,7 +483,7 @@ class MultiModalProvider with ChangeNotifier {
         footImageUrl: _footImageUrl,
         nextScreeningDate: nextScreeningDate,
         recommendations: recommendations,
-        source: apiResult['source'] as String? ?? 'backend',
+        source: 'frontend-rule-engine',
       );
 
       _pendingPrediction = result;
@@ -460,6 +498,7 @@ class MultiModalProvider with ChangeNotifier {
       _pendingPrediction = null;
       _pendingUid = null;
       _predictionOwnerUid = uid;
+      _currentPredictionSignature = currentSignature;
       _isAnalyzing = false;
       notifyListeners();
       return true;
@@ -488,6 +527,7 @@ class MultiModalProvider with ChangeNotifier {
     _pendingPrediction = null;
     _pendingUid = null;
     _predictionOwnerUid = null;
+    _currentPredictionSignature = null;
     _errorMessage = null;
     _isAnalyzing = false;
     notifyListeners();

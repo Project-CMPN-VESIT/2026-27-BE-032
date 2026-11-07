@@ -108,7 +108,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ? AppConstants.statusHealthyBg
                                 : (latest == null
                                     ? Colors.white
-                                    : AppConstants.statusPrediabeticBg);
+                                    : (latest.riskLevel == RiskLevel.prediabetic ||
+                                            latest.riskLevel == RiskLevel.borderline
+                                        ? AppConstants.statusPrediabeticBg
+                                        : AppConstants.statusDiabeticBg));
 
                         return Column(
                           children: [

@@ -86,82 +86,184 @@ class CareProvider with ChangeNotifier {
       case RiskLevel.borderline:
         return CarePlan(
           statusSummary:
-              'Screening findings need further assessment; no overall percentage is available.',
+              'Multimodal screening indicates borderline risk. Comprehensive lifestyle changes, glucose tracking, and medical consultation recommended.',
           riskLevel: RiskLevel.borderline,
           dietPlan: [
-            'Continue your usual balanced diet; screening alone does not establish a diagnosis.'
+            'Structured dietary portion control with low-glycemic index meal planning',
+            'Eliminate sugar-sweetened beverages & refined carbohydrates',
+            'Increase soluble dietary fiber (oats, legumes, chia seeds, vegetables) to 35g/day',
+            'Prioritize lean proteins and heart-healthy unsaturated fats',
           ],
-          exercisePlan: ['Follow your usual clinician-guided activity advice.'],
+          exercisePlan: [
+            '150-180 mins/week moderate aerobic exercise (brisk walking, cycling)',
+            '2-3 resistance strength training sessions per week',
+            '30 min low-impact walk post-meals to blunt glucose spikes',
+          ],
           lifestyleAdvice: [
-            'Arrange appropriate follow-up for the screening findings.'
+            'Target 5% gradual weight reduction over 90 days',
+            'Maintain structured daily blood glucose & blood pressure logs',
+            'Prioritize 7-8 hours of quality sleep to improve insulin sensitivity',
           ],
-          waterIntake: 'Not assessed by screening',
-          weightGoal: 'Not assessed by screening',
-          bloodSugarSchedule: ['Follow your existing monitoring plan.'],
+          waterIntake: '3.0 Liters / Day',
+          weightGoal: '5% reduction in 90 days',
+          bloodSugarSchedule: [
+            'Fasting glucose check 2-3x per week',
+            '2-hour post-prandial glucose check once weekly',
+          ],
           medicationReminder: [
-            'Do not start or change medication based on image screening.'
+            'Consult your clinician for formal diagnostic evaluation (HbA1c & fasting glucose)',
+            'Do not self-prescribe medications without physician guidance',
           ],
           footCareAdvice: [
-            'Have concerning or changing foot findings reviewed by a clinician.'
+            'Daily visual foot check for redness, blisters, or calluses',
+            'Keep feet clean, dry, and wear comfortable supportive shoes',
           ],
           eyeCareAdvice: [
-            'Follow up retinal findings with an eye-care professional.'
+            'Comprehensive dilated retinal examination within 6 months',
+            'Monitor for visual blurriness or floaters',
           ],
-          emergencyWarnings: [],
+          emergencyWarnings: [
+            'Consult doctor if fasting glucose exceeds 180 mg/dL or if persistent foot numbness/pain occurs',
+          ],
           doctorFollowUpSchedule:
-              'Arrange further assessment for the screening findings.',
-          weeklyGoals: [],
-          monthlyGoals: [],
+              'Schedule physician follow-up within 30 days for laboratory HbA1c testing',
+          weeklyGoals: [
+            'Complete 150 minutes of aerobic exercise',
+            'Maintain zero refined sugars for 6 out of 7 days',
+          ],
+          monthlyGoals: [
+            'Schedule laboratory diagnostic HbA1c test',
+            'Maintain stable healthy blood pressure (< 125/80 mmHg)',
+          ],
         );
       case RiskLevel.inconclusive:
         return CarePlan(
           statusSummary:
-              'The foot scan could not determine lesion status. Clinical review is recommended.',
+              'The scan could not determine lesion status conclusively. Clinical review is recommended.',
           riskLevel: RiskLevel.inconclusive,
           dietPlan: ['Continue your clinician-guided diabetes meal plan.'],
           exercisePlan: [
-            'Avoid pressure on a painful or visibly damaged foot.'
+            'Avoid excessive pressure on a painful or visibly damaged foot.'
           ],
-          lifestyleAdvice: ['Do not use this scan to rule out a foot ulcer.'],
+          lifestyleAdvice: ['Do not use screening alone to rule out a diabetic complication.'],
           waterIntake: 'Follow your clinician guidance',
-          weightGoal: 'Not assessed by this foot scan',
+          weightGoal: 'Not assessed by screening',
           bloodSugarSchedule: [
             'Continue your existing glucose monitoring schedule.'
           ],
           medicationReminder: [
-            'Do not change medication based on this foot scan.'
+            'Do not change medication based on this screening scan.'
           ],
           footCareAdvice: [
-            'Have any visible wound assessed by a qualified clinician.'
+            'Have any visible wound assessed promptly by a qualified clinician.'
           ],
-          eyeCareAdvice: ['Continue routine eye screening.'],
+          eyeCareAdvice: ['Continue routine dilated eye screening.'],
           emergencyWarnings: [
-            'Seek urgent care for a worsening wound or signs of infection.'
+            'Seek urgent care for a worsening wound, fever, or signs of infection.'
           ],
-          doctorFollowUpSchedule: 'Arrange clinical review for visible wounds.',
+          doctorFollowUpSchedule: 'Arrange clinical review for any visible wounds or symptoms.',
           weeklyGoals: [],
           monthlyGoals: [],
         );
-      default:
+      case RiskLevel.highRisk:
+      case RiskLevel.diabetic:
         return CarePlan(
-          statusSummary: 'High Risk / Active Diabetic condition detected.',
-          riskLevel: RiskLevel.diabetic,
-          dietPlan: ['Endocrinologist guided meal plan'],
-          exercisePlan: ['30 min low impact walk post meals'],
-          lifestyleAdvice: ['Continuous glucose monitoring recommended'],
-          waterIntake: '3.5 Liters / Day',
-          weightGoal: 'Clinical weight management',
-          bloodSugarSchedule: ['4x daily checks (Pre-meal & Bedtime)'],
-          medicationReminder: ['Insulin / Oral meds as prescribed'],
-          footCareAdvice: ['Daily podiatrist-approved foot check'],
-          eyeCareAdvice: ['Quarterly ophthalmologist evaluation'],
-          emergencyWarnings: [
-            'IMMEDIATE EMERGENCY: Vision loss or extreme fatigue'
+          statusSummary:
+              'High Risk / Possible Diabetes indicated by multimodal screening. Urgent physician consultation, formal diagnostic testing, and specialized care required.',
+          riskLevel: RiskLevel.highRisk,
+          dietPlan: [
+            'Clinically supervised medical nutrition therapy',
+            'Strict carbohydrate restriction (< 35g/meal)',
+            'Eliminate all refined sugars, sweetened beverages, and ultra-processed foods',
+            'Emphasize high-soluble fiber and antioxidant-rich vegetables',
           ],
-          doctorFollowUpSchedule: 'Within 7 days',
-          weeklyGoals: ['80% time-in-range (70-180 mg/dL)'],
-          monthlyGoals: ['HbA1c < 7.0%'],
+          exercisePlan: [
+            'Low-impact 20-30 min daily walking post-meals under clinician guidance',
+            'Avoid strenuous weightlifting until cardiovascular and retinal clearance is obtained',
+            'Break up prolonged sitting every 30 minutes',
+          ],
+          lifestyleAdvice: [
+            'Continuous or 4x daily capillary blood glucose monitoring',
+            'Strict cardiovascular risk reduction (blood pressure & cholesterol control)',
+            'Complete cessation of smoking and alcohol consumption',
+          ],
+          waterIntake: '3.5 Liters / Day',
+          weightGoal: 'Clinical weight management under physician supervision',
+          bloodSugarSchedule: [
+            '4x daily checks (Fasting, Pre-meal, 2h Post-prandial & Bedtime)',
+          ],
+          medicationReminder: [
+            'Immediate physician evaluation for antidiabetic pharmacological therapy',
+            'Take prescribed medications strictly as directed by your clinician',
+          ],
+          footCareAdvice: [
+            'Immediate consultation with a certified podiatrist / diabetic foot care specialist',
+            'Daily visual foot inspection with a mirror for cuts, ulcers, or hot spots',
+            'Wear approved diabetic socks and offloading orthopedic footwear',
+          ],
+          eyeCareAdvice: [
+            'Urgent dilated eye examination by a retinal specialist ophthalmologist',
+            'Optical coherence tomography (OCT) imaging to check for macular edema',
+          ],
+          emergencyWarnings: [
+            'IMMEDIATE EMERGENCY: Seek acute emergency medical care if fasting glucose > 250 mg/dL, ketones are present, or sudden visual disturbances occur.',
+          ],
+          doctorFollowUpSchedule: 'Urgent consultation with physician / endocrinologist within 7 days',
+          weeklyGoals: ['Achieve 70%+ glucose time-in-range (70-180 mg/dL)', 'Daily foot and eye inspection logs'],
+          monthlyGoals: ['Target HbA1c reduction towards < 7.0% under physician supervision'],
         );
     }
+  }
+
+  void updateFromPrediction(PredictionResult result) {
+    final base = getCarePlanForLevel(result.riskLevel);
+
+    final bool isEyeAbnormal = result.retinaStatusLabel != 'NORMAL' && result.retinaStatusLabel.isNotEmpty;
+    final bool isFootAbnormal = result.footStatusLabel != 'NORMAL' && result.footStatusLabel.isNotEmpty && result.footStatusLabel != 'INCONCLUSIVE';
+
+    List<String> eyeCare = List.from(base.eyeCareAdvice);
+    if (isEyeAbnormal) {
+      eyeCare = [
+        'Urgent comprehensive dilated eye examination by a retinal specialist ophthalmologist for detected retinopathy.',
+        'Undergo optical coherence tomography (OCT) imaging to evaluate retinal microvasculature.',
+        'Strict blood pressure & glycemic control to prevent diabetic retinopathy progression.',
+        'Avoid high-intensity straining that could increase intraocular retinal pressure.',
+      ];
+    }
+
+    List<String> footCare = List.from(base.footCareAdvice);
+    if (isFootAbnormal) {
+      footCare = [
+        'Immediate consultation with a certified podiatrist or diabetic foot care specialist for detected ulcer/lesion.',
+        'Professional wound management: initiate protective non-adherent dressing and pressure offloading footwear.',
+        'Perform daily visual foot inspections for cuts, blisters, erythema, swelling, or localized temperature changes.',
+        'Strict infection prevention: keep ulcerated site clean and dry; avoid walking barefoot or wearing tight footwear.',
+      ];
+    }
+
+    String summary = base.statusSummary;
+    if (result.predictionLabel.isNotEmpty) {
+      final scoreStr = result.riskPercentage != null ? ' (${result.riskPercentage!.toStringAsFixed(1)}% Overall Demo Risk Score)' : '';
+      summary = 'Overall Screening: ${result.predictionLabel}$scoreStr. ${base.statusSummary}';
+    }
+
+    _currentCarePlan = CarePlan(
+      statusSummary: summary,
+      riskLevel: result.riskLevel,
+      dietPlan: base.dietPlan,
+      exercisePlan: base.exercisePlan,
+      lifestyleAdvice: base.lifestyleAdvice,
+      waterIntake: base.waterIntake,
+      weightGoal: base.weightGoal,
+      bloodSugarSchedule: base.bloodSugarSchedule,
+      medicationReminder: base.medicationReminder,
+      footCareAdvice: footCare,
+      eyeCareAdvice: eyeCare,
+      emergencyWarnings: base.emergencyWarnings,
+      doctorFollowUpSchedule: base.doctorFollowUpSchedule,
+      weeklyGoals: base.weeklyGoals,
+      monthlyGoals: base.monthlyGoals,
+    );
+    notifyListeners();
   }
 }

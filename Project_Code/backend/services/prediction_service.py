@@ -90,26 +90,77 @@ BRFSS_STDS = [
 def _build_brfss_feature_vector(data: Dict[str, Any]):
     import numpy as np
 
+    # Map general health from PhysHlthRating if GenHlth not directly provided
+    # In Flutter questionnaire: 1=Excellent, 2=Good, 3=Fair, 4=Poor
+    # In BRFSS: 1=Excellent, 2=Very Good, 3=Good, 4=Fair, 5=Poor
+    phys_rating = data.get("PhysHlthRating")
+    gen_hlth = data.get("GenHlth")
+    phys_hlth = data.get("PhysHlth")
+    ment_hlth = data.get("MentHlth")
+
+    if gen_hlth is None and phys_rating is not None:
+        if phys_rating == 1:
+            gen_hlth = 1.0
+        elif phys_rating == 2:
+            gen_hlth = 2.0
+        elif phys_rating == 3:
+            gen_hlth = 4.0
+        elif phys_rating == 4:
+            gen_hlth = 5.0
+
+    if phys_hlth is None and phys_rating is not None:
+        if phys_rating == 1:
+            phys_hlth = 0.0
+        elif phys_rating == 2:
+            phys_hlth = 2.0
+        elif phys_rating == 3:
+            phys_hlth = 14.0
+        elif phys_rating == 4:
+            phys_hlth = 28.0
+
+    ment_rating = data.get("MentHlthRating")
+    if ment_hlth is None and ment_rating is not None:
+        if ment_rating == 1:
+            ment_hlth = 0.0
+        elif ment_rating == 2:
+            ment_hlth = 2.0
+        elif ment_rating == 3:
+            ment_hlth = 12.0
+        elif ment_rating == 4:
+            ment_hlth = 25.0
+
+    high_chol = data.get("HighChol")
+    chol_check = data.get("CholCheck")
+    if chol_check is None and high_chol is not None and float(high_chol) == 1.0:
+        chol_check = 1.0
+
+    mapped_values = {
+        "GenHlth": gen_hlth,
+        "PhysHlth": phys_hlth,
+        "MentHlth": ment_hlth,
+        "CholCheck": chol_check,
+    }
+
     positive_frequency_thresholds = {
         "PhysActivity": 1,
         "Fruits": 2,
         "Veggies": 2,
     }
+
     raw_values = []
     for key in FEATURE_KEYS:
-        value = data.get(key)
-        if value is None:
+        val = data.get(key)
+        if val is None:
+            val = mapped_values.get(key)
+        if val is None:
             raw_values.append(np.nan)
             continue
-        numeric_value = float(value)
+        num = float(val)
         if key in positive_frequency_thresholds:
-            numeric_value = float(
-                numeric_value >= positive_frequency_thresholds[key]
-            )
-        raw_values.append(numeric_value)
+            num = float(num >= positive_frequency_thresholds[key])
+        raw_values.append(num)
 
     raw = np.asarray(raw_values, dtype=np.float32)
-
     means = np.array(BRFSS_MEANS, dtype=np.float32)
     stds = np.array(BRFSS_STDS, dtype=np.float32)
     scaled = (raw - means) / stds
@@ -389,14 +440,42 @@ def _predict_image_model(model: Any, img_tensor: Any) -> Tuple[int, List[float]]
     return predicted_class, probabilities
 
 
+def _is_assessment_abnormal(result: Dict[str, Any]) -> bool:
+    risk_pct = result.get("risk_percentage")
+    if isinstance(risk_pct, (int, float)) and math.isfinite(float(risk_pct)):
+        return float(risk_pct) >= 35.0
+
+    target = result.get("target")
+    if target in (0, 1):
+        return target == 1
+
+    risk_level = str(result.get("risk_level", "")).lower()
+    if risk_level in {"borderline", "prediabetic", "diabetic", "highrisk"}:
+        return True
+    prediction = str(result.get("prediction", "")).lower()
+    if "combined prediabetes/diabetes" in prediction or "indicator predicted" in prediction:
+        return True
+    return False
+
+
 def _is_retina_abnormal(result: Dict[str, Any]) -> bool:
     prediction = str(result.get("prediction", "")).lower()
     severity = str(result.get("severity", "")).lower()
-    if "retinopathy" in prediction or "retinopathy" in severity:
-        return not ("no retinopathy" in prediction or "no retinopathy" in severity)
+    risk_level = str(result.get("risk_level", "")).lower()
+    if risk_level in {"prediabetic", "diabetic", "highrisk", "inconclusive"}:
+        return True
+    if "inconclusive" in prediction or "inconclusive" in severity:
+        return True
+    if "no retinopathy" in prediction or "no retinopathy" in severity:
+        return False
     if "healthy" in prediction and "normal" in prediction:
         return False
-    return "abnormal" in prediction or "detected" in prediction or "mild" in prediction or "moderate" in prediction
+    return (
+        "retinopathy" in prediction
+        or "retinopathy" in severity
+        or "abnormal" in prediction
+        or "detected" in prediction
+    )
 
 
 def predict_retina(image_url: str | None = None, model: Any = None) -> Dict[str, Any]:
@@ -436,67 +515,199 @@ def predict_retina(image_url: str | None = None, model: Any = None) -> Dict[str,
         raise RuntimeError("Retina prediction failed; no result was produced.") from exc
 
 
+def _normalize_foot_status(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    aliases = {
+        "NO LESION DETECTED": "NORMAL",
+        "HEALTHY FOOT": "NORMAL",
+        "HEALTHY FOOT SKIN": "NORMAL",
+        "NO LOCALIZED WOUND": "NORMAL",
+        "NORMAL SKIN": "NORMAL",
+        "MILD FINDING DETECTED": "MILD FINDING",
+        "MILD FOOT ULCER": "MILD FINDING",
+        "FOOT ULCER DETECTED": "SEVERE FINDING",
+        "SEVERE FOOT ULCER DETECTED": "SEVERE FINDING",
+        "SEVERE FINDING": "SEVERE FINDING",
+        "MILD FINDING": "MILD FINDING",
+        "ULCER SUSPECTED": "SEVERE FINDING",
+        "INCONCLUSIVE": "INCONCLUSIVE",
+    }
+    return aliases.get(text, text)
+
+
 def _is_foot_abnormal(result: Dict[str, Any]) -> bool:
-    status = str(result.get("status", "")).lower()
-    prediction = str(result.get("prediction", "")).lower()
-    severity = str(result.get("severity", "")).lower()
-    return (
-        status == "ulcer suspected"
-        or status == "severe finding"
-        or prediction == "ulcer suspected"
-        or prediction == "severe finding"
-        or severity == "ulcer suspected"
-        or severity == "severe finding"
-    )
+    status = _normalize_foot_status(result.get("status"))
+    prediction = _normalize_foot_status(result.get("prediction"))
+    severity = _normalize_foot_status(result.get("severity"))
+    finding = str(result.get("finding", "")).upper()
+
+    if status == "INCONCLUSIVE" or prediction == "INCONCLUSIVE" or severity == "INCONCLUSIVE":
+        return True
+    if status in {"NORMAL"}:
+        return False
+    if prediction in {"NORMAL"}:
+        return False
+    if severity in {"NORMAL"}:
+        return False
+    if "NO LESION" in finding or "NO LOCALIZED WOUND" in finding or "HEALTHY FOOT SKIN" in finding:
+        return False
+
+    if status in {"MILD FINDING", "SEVERE FINDING"}:
+        return True
+    if prediction in {"MILD FINDING", "SEVERE FINDING"}:
+        return True
+    if severity in {"MILD FINDING", "SEVERE FINDING"}:
+        return True
+
+    text = f"{status} {prediction} {severity} {finding}".lower()
+    has_ulcer_marker = "ulcer" in text or "lesion" in text or "tissue damage" in text
+    return has_ulcer_marker and not ("synthetic" in text or "ambiguous" in text or "insufficient" in text)
 
 
-def predict_foot(image_url: str | bytes | None = None) -> Dict[str, Any]:
+def predict_foot(image_url: str | bytes | None = None, model: Any = None) -> Dict[str, Any]:
     if image_url is None:
         raise ValueError("A foot image is required for prediction")
 
     from backend.services.opencv_foot_service import analyze_foot_image
 
-    return analyze_foot_image(image_url)
+    # 1. OpenCV photographic quality, metrics and bounding box regions
+    cv_result = analyze_foot_image(image_url)
+    if cv_result.get("status") == "INCONCLUSIVE":
+        return cv_result
+
+    # 2. ResNet50 Deep Learning Prediction if model is loaded
+    if model is not None:
+        try:
+            import io
+            import numpy as np
+            from PIL import Image
+
+            if isinstance(image_url, bytes):
+                img = Image.open(io.BytesIO(image_url))
+            elif isinstance(image_url, str):
+                clean_path = image_url.replace("file://", "").strip()
+                img = Image.open(clean_path)
+            elif isinstance(image_url, Image.Image):
+                img = image_url
+            else:
+                img = None
+
+            if img is not None:
+                img_rgb = img.convert("RGB").resize((224, 224), resample=Image.Resampling.NEAREST)
+                arr = np.array(img_rgb, dtype=np.float32) / 255.0
+                preds = model.predict(np.expand_dims(arr, axis=0), verbose=0)[0]
+                p0, p1, p2, p3 = [float(x) for x in preds]
+                argmax = int(np.argmax(preds))
+
+                # Class 1 = Normal Skin (Patches)
+                # Class 0, 3 = Severe Ulcer Wounds (Original Images & Transfer-Learning)
+                # Class 2 = TestSet Ulcers
+                if argmax == 1 and p1 >= 0.45:
+                    status = "NORMAL"
+                    confidence = round(p1 * 100, 1)
+                    finding = "No localized wound-like lesion or tissue breakdown identified."
+                    description = "ResNet-50 deep learning model identified healthy foot skin tissue with no active ulceration."
+                    reason = "Normal skin color distribution and absence of ulcerated lesion boundaries."
+                elif argmax in (0, 3) or (p0 + p3) >= 0.50:
+                    status = "SEVERE FINDING"
+                    confidence = round(max(p0, p3) * 100, 1)
+                    finding = f"Deep learning analysis identified active diabetic foot ulceration and significant tissue damage ({confidence}% confidence)."
+                    description = "Trained DFU ResNet50 model found signs consistent with severe diabetic foot ulceration; seek prompt clinical evaluation."
+                    reason = "Model detected severe localized ulcer wound boundary, tissue discoloration, and structural skin disruption."
+                else:
+                    status = "MILD FINDING"
+                    confidence = round(max(p0, p2, p3) * 100, 1)
+                    finding = f"Deep learning screening detected early localized tissue change / mild lesion ({confidence}% confidence)."
+                    description = "Screening found a localized region with wound-like visual features; clinical review is recommended."
+                    reason = "Mild superficial lesion or localized discoloration detected without extensive deep ulceration."
+
+                return {
+                    "status": status,
+                    "prediction": status,
+                    "finding": finding,
+                    "description": description,
+                    "reason": reason,
+                    "model": "ResNet50-DFU + OpenCV",
+                    "screening_mode": "actual-upload",
+                    "demo_mode": None,
+                    "confidence": confidence,
+                    "regions": cv_result.get("regions", []),
+                    "image_metrics": cv_result.get("image_metrics", {}),
+                    "disclaimer": cv_result.get("disclaimer"),
+                    "probabilities": [round(x, 4) for x in [p0, p1, p2, p3]],
+                }
+        except Exception as exc:
+            logger.exception("ResNet-50 inference failed, falling back to OpenCV result: %s", exc)
+
+    return cv_result
 
 
 def generate_care_plan(
-    assessment_positive: bool, retina_abnormal: bool, foot_abnormal: bool
+    assessment_abnormal: bool,
+    retina_abnormal: bool,
+    foot_abnormal: bool,
+    final_category: str = "",
 ) -> List[str]:
-    if assessment_positive and retina_abnormal and foot_abnormal:
-        return [
-            "Immediate physician & endocrinologist specialist consultation",
-            "Urgent consultation with certified diabetic foot care specialist",
-            "Comprehensive examination by retinal specialist ophthalmologist",
-            "Perform full diagnostic blood laboratory panel including HbA1c",
-            "Intensive diabetic lifestyle intervention & dietary plan",
-            "Comprehensive pharmacological review & medication adjustment",
-            "Daily blood glucose, blood pressure, and foot wound monitoring",
-        ]
+    plan: List[str] = []
+
+    if final_category == "Healthy / Normal" or (not assessment_abnormal and not retina_abnormal and not foot_abnormal):
+        plan.extend([
+            "Maintain healthy lifestyle with at least 150 minutes of weekly moderate aerobic activity (brisk walking, swimming).",
+            "Follow a balanced, low-glycemic Mediterranean-style diet rich in fiber, fresh vegetables, and lean proteins.",
+            "Ensure optimal daily hydration (2.5 - 3.0 Liters) and maintain consistent sleep hygiene.",
+            "Schedule annual comprehensive preventive diabetes screening and routine wellness checkups.",
+        ])
+    elif final_category == "Early Risk":
+        plan.extend([
+            "Reduce sugar-sweetened beverages and refined carbohydrates; favor high-fiber whole foods.",
+            "Increase daily physical activity gradually to at least 150 minutes per week of moderate exercise.",
+            "Maintain regular blood glucose monitoring and schedule follow-up screening within 3 to 6 months.",
+            "Review weight, sleep, and stress factors to reduce future progression risk.",
+        ])
+    elif final_category == "Borderline":
+        plan.extend([
+            "Detailed medical consultation for HbA1c and fasting plasma glucose confirmation.",
+            "Use a structured low-glycemic diet with portion control and reduced refined starches.",
+            "Aim for 30 minutes of daily low-impact exercise and a consistent daily activity schedule.",
+            "Monitor blood glucose, blood pressure, and symptoms with a structured log for clinical review.",
+        ])
+    else:  # Diabetic / High Risk
+        plan.extend([
+            "Urgent physician and endocrinologist consultation for formal diabetes evaluation and treatment planning.",
+            "Request a full diagnostic panel including HbA1c, fasting plasma glucose, renal function, and lipid profile.",
+            "Implement intensive lifestyle modification, medication review, and cardiovascular risk reduction.",
+            "Monitor blood glucose, blood pressure, and symptoms daily with close follow-up.",
+        ])
+
+    if assessment_abnormal:
+        plan.extend([
+            "Prioritize weight management, meal timing, and regular blood sugar tracking to improve long-term metabolic control.",
+            "Discuss risk factors with your clinician and review whether additional lab testing is needed.",
+        ])
+
     if retina_abnormal:
-        return [
-            "Immediate ophthalmologist consultation & dilated eye exam",
-            "Strict daily blood sugar monitoring (fasting & post-prandial)",
-            "Request diagnostic HbA1c laboratory blood test",
-            "Undergo specialized fundus retinal imaging & OCT examination",
-            "Implement low-glycemic, heart-healthy dietary changes",
-        ]
+        plan.extend([
+            "Arrange an urgent dilated eye examination or retinal specialist review for detected retinal findings.",
+            "Maintain strict glycemic and blood pressure control to reduce progression of eye disease.",
+        ])
+
     if foot_abnormal:
-        return [
-            "Initiate professional foot wound management & protective dressing",
-            "Perform daily foot inspection for cuts, blisters, or warm spots",
-            "Consult certified podiatrist / diabetic foot care specialist",
-            "Prevent skin breakdown and secondary bacterial infections",
-            "Maintain tight blood sugar control to promote tissue healing",
-        ]
-    return [
-        "Maintain healthy lifestyle with 30 minutes daily physical activity",
-        "Schedule annual comprehensive diabetes & health screening",
-        "Follow balanced, low-glycemic, fiber-rich Mediterranean diet",
-        "Keep hydrated and monitor routine wellness metrics",
-    ]
+        plan.extend([
+            "Consult a podiatrist or diabetic foot specialist for a clinical foot assessment and wound management plan.",
+            "Use protective, pressure-relieving footwear and avoid walking barefoot to protect the foot.",
+            "Perform daily foot inspections and keep the area clean, dry, and protected from injury or infection.",
+        ])
+
+    return plan
 
 
-def predict_final(assessment_result: Dict[str, Any], retina_result: Dict[str, Any], foot_result: Dict[str, Any]) -> Dict[str, Any]:
+def predict_final(
+    assessment_result: Dict[str, Any],
+    retina_result: Dict[str, Any],
+    foot_result: Dict[str, Any],
+) -> Dict[str, Any]:
     def valid_percentage(value: Any) -> float | None:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             return None
@@ -537,35 +748,63 @@ def predict_final(assessment_result: Dict[str, Any], retina_result: Dict[str, An
             assessment_positive = False
             assessment_inconclusive = True
 
-    retina_score = None
-
     foot_label = " ".join(
         str(foot_result.get(key, "")).lower()
         for key in ("status", "prediction", "risk_level")
     )
-    foot_ulcer_suspected = (
-        "ulcer suspected" in foot_label or "severe finding" in foot_label
+    normalized_foot_status = _normalize_foot_status(
+        foot_result.get("status") or foot_result.get("prediction")
     )
-    foot_score = None
-    foot_inconclusive = "inconclusive" in foot_label
+    foot_ulcer_suspected = (
+        normalized_foot_status == "SEVERE FINDING"
+        or "ulcer suspected" in foot_label
+        or "severe finding" in foot_label
+        or "severe foot ulcer detected" in foot_label
+    )
+    foot_inconclusive = (
+        "inconclusive" in foot_label
+        or normalized_foot_status == "INCONCLUSIVE"
+    )
 
     retina_abnormal = _is_retina_abnormal(retina_result)
-    if (
-        assessment_positive
-        or assessment_inconclusive
-        or retina_abnormal
-        or foot_ulcer_suspected
-    ):
-        risk_level = "borderline"
-        prediction_label = "Borderline / Further Assessment"
+    # Final combined outcome is driven by the exact multimodal matrix, not the
+    # individual module verdicts alone.
+    assess_abnormal = _is_assessment_abnormal(assessment_result)
+    foot_abnormal = _is_foot_abnormal(foot_result)
+    abnormal_count = int(assess_abnormal) + int(retina_abnormal) + int(foot_abnormal)
+
+    # STRICT MULTIMODAL DECISION MATRIX
+    # 0 abnormal -> Healthy / Normal (0–5%)
+    # 1 abnormal -> Early Risk (15–25%)
+    # 2 abnormal -> Borderline (40–50%)
+    # 3 abnormal -> Diabetic / High Risk (70–75%)
+    if abnormal_count == 0:
+        demo_category = "Healthy / Normal"
+        demo_score = 5.0
+        demo_risk_level = "healthy"
+    elif abnormal_count == 1:
+        demo_category = "Early Risk"
+        demo_score = 20.0
+        demo_risk_level = "prediabetic"
+    elif abnormal_count == 2:
+        demo_category = "Borderline"
+        demo_score = 45.0
+        demo_risk_level = "borderline"
     else:
-        risk_level = "healthy"
-        prediction_label = "Normal"
+        demo_category = "Diabetic / High Risk"
+        demo_score = 72.0
+        demo_risk_level = "highRisk"
+
+    # Keep the final combined status aligned with the centralized decision matrix.
+    risk_level = demo_risk_level
+    prediction_label = demo_category
 
     if foot_inconclusive:
         logger.info("Foot result is inconclusive; it is excluded from overall status.")
 
-    foot_abnormal = _is_foot_abnormal(foot_result)
+    retina_confidence = valid_percentage(retina_result.get("confidence"))
+    foot_confidence = valid_percentage(foot_result.get("confidence"))
+
     class_probabilities = assessment_result.get("class_probabilities")
     if not isinstance(class_probabilities, dict):
         class_probabilities = None
@@ -581,6 +820,13 @@ def predict_final(assessment_result: Dict[str, Any], retina_result: Dict[str, An
             }
         }
 
+    care_plan = generate_care_plan(
+        assess_abnormal,
+        retina_abnormal,
+        foot_abnormal,
+        final_category=demo_category,
+    )
+
     return {
         "assessment_score": round(assessment_score, 2),
         "assessment_class_probabilities": class_probabilities,
@@ -588,20 +834,35 @@ def predict_final(assessment_result: Dict[str, Any], retina_result: Dict[str, An
         "assessment_probability_calibration": assessment_result.get(
             "probability_calibration"
         ),
+        "assessment_abnormal": assess_abnormal,
         "retina_result": retina_prediction,
-        "retina_risk_percentage": round(retina_score, 1)
-        if retina_score is not None
-        else None,
-        "retina_confidence": valid_percentage(retina_result.get("confidence")),
+        "retina_risk_percentage": None,
+        "retina_confidence": retina_confidence,
+        "retina_abnormal": retina_abnormal,
         "foot_result": foot_prediction,
-        "foot_risk_percentage": round(foot_score, 1)
-        if foot_score is not None
-        else None,
-        "foot_confidence": valid_percentage(foot_result.get("confidence")),
-        "overall_risk_percentage": None,
+        "foot_risk_percentage": None,
+        "foot_confidence": foot_confidence,
+        "foot_abnormal": foot_abnormal,
+        "abnormal_inputs_count": abnormal_count,
+        "overall_demo_risk_score": demo_score,
+        "demo_risk_score": demo_score,
+        "demo_prediction_label": demo_category,
+        "demo_risk_level": demo_risk_level,
+        "overall_risk_percentage": demo_score,
+        "risk_percentage": demo_score,
         "risk_level": risk_level,
         "prediction_label": prediction_label,
-        "care_plan": generate_care_plan(
-            assessment_positive, retina_abnormal, foot_abnormal
+        "care_plan": care_plan,
+        "multimodal_demo_matrix": {
+            "category": demo_category,
+            "overall_demo_risk_score": demo_score,
+            "demo_risk_level": demo_risk_level,
+            "abnormal_inputs_count": abnormal_count,
+            "score_band": "0-5%" if abnormal_count == 0 else ("15-25%" if abnormal_count == 1 else ("40-50%" if abnormal_count == 2 else "70-75%")),
+        },
+        "score_disclaimer": (
+            "The overall demo risk score is a competition demonstration metric "
+            "derived from the centralized multimodal decision matrix, distinct from "
+            "individual model clinical probabilities."
         ),
     }

@@ -633,6 +633,7 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                               mentalHealthRating: _mentHlthRating,
                             );
                             try {
+                              multiModal.resetWorkflow();
                               final result =
                                   await provider.runTabularAssessment(payload);
                               multiModal.setAssessmentResult(payload, result);
@@ -1258,22 +1259,17 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
   }
 
   Widget _buildCombinedResultCard(PredictionResult result) {
-    String withModelConfidence(String label, double? confidence) {
-      if (confidence == null) return label;
-      return '$label (${confidence.toStringAsFixed(1)}% model confidence)';
-    }
+    final riskColor = switch (result.riskLevel) {
+      RiskLevel.healthy => AppConstants.statusHealthy,
+      RiskLevel.prediabetic || RiskLevel.borderline => AppConstants.statusPrediabetic,
+      _ => AppConstants.statusDiabetic,
+    };
 
-    final riskColor = result.riskLevel == RiskLevel.healthy
-        ? AppConstants.statusHealthy
-        : (result.riskLevel == RiskLevel.prediabetic
-            ? AppConstants.statusPrediabetic
-            : AppConstants.statusDiabetic);
-
-    final riskBgColor = result.riskLevel == RiskLevel.healthy
-        ? AppConstants.statusHealthyBg
-        : (result.riskLevel == RiskLevel.prediabetic
-            ? AppConstants.statusPrediabeticBg
-            : AppConstants.statusDiabeticBg);
+    final riskBgColor = switch (result.riskLevel) {
+      RiskLevel.healthy => AppConstants.statusHealthyBg,
+      RiskLevel.prediabetic || RiskLevel.borderline => AppConstants.statusPrediabeticBg,
+      _ => AppConstants.statusDiabeticBg,
+    };
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1324,7 +1320,7 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                     color: riskBgColor,
                     borderRadius: BorderRadius.circular(12)),
                 child: Text(
-                  result.riskLevel.name.toUpperCase(),
+                  result.predictionLabel,
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
@@ -1337,7 +1333,7 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
           Center(
             child: Column(
               children: [
-                if (result.riskPercentage case final percentage?)
+                if (result.riskPercentage case final percentage?) ...[
                   Text(
                     '${percentage.toStringAsFixed(1)}%',
                     style: TextStyle(
@@ -1345,17 +1341,14 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                         fontWeight: FontWeight.bold,
                         color: riskColor),
                   ),
-                Text(
-                  result.predictionLabel,
-                  textAlign: TextAlign.center,
-                  softWrap: true,
-                  overflow: TextOverflow.visible,
-                  maxLines: null,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: AppConstants.textSecondary),
-                ),
+                  const Text(
+                    'Overall Multimodal Risk Score',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        color: AppConstants.textSecondary),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1368,64 +1361,27 @@ class _DiabetesAssessmentScreenState extends State<DiabetesAssessmentScreen> {
                 color: AppConstants.textPrimary),
           ),
           const SizedBox(height: 8),
-          if (result.assessmentScore case final score?)
-            _buildFindingTile(
-                'Assessment model probability',
-                '${score.toStringAsFixed(1)}% combined prediabetes/diabetes indicator'),
-          for (final entry in result.assessmentClassProbabilities.entries)
-            _buildFindingTile(
-              switch (entry.key) {
-                'normal' => 'Normal (no-indicator) probability',
-                'borderline' => 'Borderline probability',
-                'diabetes' => 'Diabetes probability',
-                'combined_prediabetes_diabetes' =>
-                  'Combined prediabetes/diabetes probability',
-                _ => entry.key,
-              },
-              entry.value == null
-                  ? 'Not separately modeled'
-                  : '${entry.value!.toStringAsFixed(1)}%',
-            ),
-          if (result.assessmentExplanation case final explanation?
-              when explanation.isNotEmpty)
-            _buildFindingTile('Assessment explanation', explanation),
-          if (result.assessmentProbabilityCalibration
-              case final calibration? when calibration.isNotEmpty)
-            _buildFindingTile('Probability calibration', calibration),
+          _buildFindingTile(
+            'Tabular Assessment Score',
+            result.assessmentScore == null
+                ? 'Not available'
+                : '${result.assessmentScore!.toStringAsFixed(1)}%',
+          ),
           _buildFindingTile(
             'Retinal Scan Result',
-            withModelConfidence(
-              result.retinaResult,
-              result.retinaConfidencePercentage,
-            ),
+            result.retinaResult.isEmpty ? 'Not available' : result.retinaResult,
           ),
           _buildFindingTile(
             'Diabetic Foot Scan Result',
-            withModelConfidence(
-              result.footResult,
-              result.footConfidencePercentage,
-            ),
+            result.footResult.isEmpty ? 'Not available' : result.footResult,
           ),
           const Divider(height: 24),
-          Row(
-            children: [
-              const Icon(Icons.favorite_outline,
-                  color: AppConstants.primaryBlue, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  result.carePlanStatus,
-                  softWrap: true,
-                  overflow: TextOverflow.visible,
-                  maxLines: null,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                    color: AppConstants.primaryBlue,
-                  ),
-                ),
-              ),
-            ],
+          const Text(
+            'Personalized Care Plan',
+            style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: AppConstants.textPrimary),
           ),
           const SizedBox(height: 10),
           ...result.recommendations.map(
