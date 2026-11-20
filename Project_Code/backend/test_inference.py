@@ -116,6 +116,9 @@ def test_opencv_analyzes_actual_uploaded_image(
     assert response["demo_mode"] is None
     assert response["confidence"] is None
     assert response["description"] == FOOT_DESCRIPTIONS[expected_status]
+    assert "opencv" not in response["finding"].lower()
+    assert "opencv" not in response["description"].lower()
+    assert "opencv" not in response["disclaimer"].lower()
     assert response["model"] == "opencv-region-screening"
     assert "not clinically validated" in response["disclaimer"].lower()
     assert isinstance(response["image_metrics"]["sharpness"], float)

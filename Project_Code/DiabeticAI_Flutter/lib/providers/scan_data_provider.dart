@@ -10,6 +10,7 @@ class ScanDataProvider with ChangeNotifier {
   bool _isLoading = false;
   int _loadGeneration = 0;
   int? _totalScans;
+  int? _totalAssessments;
   double? _bmi;
 
   // ── Retina ─────────────────────────────────────────────────────────────────
@@ -42,6 +43,7 @@ class ScanDataProvider with ChangeNotifier {
   Map<String, dynamic>? get assessmentResult => _assessmentResult;
   double? get assessmentScore => _assessmentScore;
   int? get totalScans => _totalScans;
+  int? get totalAssessments => _totalAssessments;
   double? get bmi => _bmi;
   String? get loadError => _loadError;
   bool get isLoading => _isLoading;
@@ -71,6 +73,7 @@ class ScanDataProvider with ChangeNotifier {
         _firestoreService.getFootRecord(uid),
         _firestoreService.getRetinaRecord(uid),
         _firestoreService.countPredictionHistory(uid),
+        _firestoreService.countCompletedAssessments(uid),
       ]);
       if (_ownerUid != uid || generation != _loadGeneration) return;
 
@@ -90,6 +93,7 @@ class ScanDataProvider with ChangeNotifier {
       _retinaUrl = _stringValue(retina?['imageUrl']);
       _retinaResult = _stringValue(retina?['prediction']);
       _totalScans = records[3] as int;
+      _totalAssessments = records[4] as int;
       _isLoading = false;
       _loadError = null;
       notifyListeners();
@@ -157,6 +161,7 @@ class ScanDataProvider with ChangeNotifier {
     _loadError = null;
     _isLoading = false;
     _totalScans = null;
+    _totalAssessments = null;
     _bmi = null;
     _retinaUrl = null;
     _retinaResult = null;

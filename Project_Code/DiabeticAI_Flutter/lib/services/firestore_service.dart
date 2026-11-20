@@ -262,6 +262,18 @@ class FirestoreService {
     return snapshot.count ?? 0;
   }
 
+  Future<int> countCompletedAssessments(String uid) async {
+    _requireAuthenticatedUid(uid);
+    final snapshot = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('predictions')
+        .where('type', isEqualTo: PredictionType.diabetesAssessment.name)
+        .count()
+        .get();
+    return snapshot.count ?? 0;
+  }
+
   Future<void> deletePredictionHistory(String uid) async {
     _requireAuthenticatedUid(uid);
     final predictions =

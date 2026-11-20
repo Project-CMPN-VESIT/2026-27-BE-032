@@ -483,28 +483,13 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  'Foot Image Screening Result',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppConstants.textPrimary,
-                                  ),
-                                ),
-                                Text(
-                                  provider.footResultMap?['screening_mode'] ==
-                                          'actual-upload'
-                                      ? 'OPENCV PRELIMINARY SCREENING'
-                                      : 'IMAGE QUALITY CHECK',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppConstants.textSecondary,
-                                  ),
-                                ),
-                              ],
+                            const Text(
+                              'Foot Image Screening Result',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: AppConstants.textPrimary,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             const Text(
@@ -551,7 +536,7 @@ class _FootUlcerScreenState extends State<FootUlcerScreen> {
                                   final regionCount =
                                       metrics['localized_region_count'];
                                   return Text(
-                                    'OpenCV metrics: ${sharpness is num ? 'sharpness ${sharpness.toStringAsFixed(1)}' : ''}'
+                                    'Image analysis: ${sharpness is num ? 'sharpness ${sharpness.toStringAsFixed(1)}' : ''}'
                                     '${sharpness is num && brightness is num ? ', ' : ''}'
                                     '${brightness is num ? 'brightness ${brightness.toStringAsFixed(1)}' : ''}'
                                     '${(sharpness is num || brightness is num) && regionCount is num ? ', ' : ''}'

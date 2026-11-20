@@ -152,7 +152,7 @@ class ApiService {
   }
 
   /// Foot Prediction
-  /// Sends the selected image bytes to the backend for OpenCV analysis.
+  /// Sends the selected image bytes to the backend for visual screening.
   /// The Firebase URL is saved separately for history and image display.
   Future<Map<String, dynamic>> predictFootUlcer({
     required File imageFile,

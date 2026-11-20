@@ -1,4 +1,4 @@
-"""Preliminary OpenCV analysis of uploaded foot images."""
+"""Preliminary visual analysis of uploaded foot images."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 FOOT_DESCRIPTIONS = {
-    "NORMAL": "OpenCV found no clear localized wound-like region in the uploaded image.",
-    "MILD FINDING": "OpenCV found a small, localized region with combined wound-like visual features; clinical review is recommended.",
-    "SEVERE FINDING": "OpenCV found a large or multiple wound-like regions; seek prompt clinical evaluation.",
+    "NORMAL": "No clear localized wound-like region was found in the uploaded image.",
+    "MILD FINDING": "A small, localized region with wound-like visual features was found; clinical review is recommended.",
+    "SEVERE FINDING": "A large or multiple wound-like regions were found; seek prompt clinical evaluation.",
     "INCONCLUSIVE": (
         "The image could not be assessed reliably. Upload a clear, well-lit image "
         "showing the foot area."
@@ -24,7 +24,7 @@ FOOT_DESCRIPTIONS = {
 }
 
 SCREENING_DISCLAIMER = (
-    "Preliminary OpenCV visual screening only. Not clinically validated and not "
+    "Preliminary visual screening only. Not clinically validated and not "
     "a medical diagnosis."
 )
 
@@ -352,7 +352,7 @@ def analyze_foot_image(image_input: Any) -> Dict[str, Any]:
 
     if region_count == 0:
         status = "NORMAL"
-        finding = "No localized wound-like region was identified by OpenCV."
+        finding = "No localized wound-like region was identified."
         reason = (
             "No region combined sufficient local darkness/chroma change with "
             "texture or boundary evidence. This does not rule out a medical problem."
@@ -365,7 +365,7 @@ def analyze_foot_image(image_input: Any) -> Dict[str, Any]:
     ):
         status = "SEVERE FINDING"
         finding = (
-            f"OpenCV identified {region_count} localized region(s) covering "
+            f"The screening identified {region_count} localized region(s) covering "
             f"{local_area * 100:.1f}% of the analyzed image."
         )
         reason = (
@@ -376,7 +376,7 @@ def analyze_foot_image(image_input: Any) -> Dict[str, Any]:
     else:
         status = "MILD FINDING"
         finding = (
-            f"OpenCV identified {region_count} small localized region(s) "
+            f"The screening identified {region_count} small localized region(s) "
             f"covering {local_area * 100:.1f}% of the analyzed image."
         )
         reason = (

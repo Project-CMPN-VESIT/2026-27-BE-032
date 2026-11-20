@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class AppConstants {
   static const String appName = 'DiabeticAI';
@@ -35,10 +35,8 @@ class AppConstants {
   //   - Android Emulator: http://10.0.2.2:8000 (maps to host localhost:8000)
   //   - Web/Desktop:      http://127.0.0.1:8000
   // When start_cf_tunnel.py runs, it rewrites this to the live https://*.trycloudflare.com URL.
-  static const String baseUrl = "https://spirits-morrison-toronto-awarded.trycloudflare.com";
+  static const String baseUrl = "https://concerned-continental-jackson-reports.trycloudflare.com";
 }
-
-
 
 
 

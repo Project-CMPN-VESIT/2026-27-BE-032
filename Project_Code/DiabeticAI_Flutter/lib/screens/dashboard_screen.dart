@@ -259,11 +259,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   icon: Icons.monitor_weight_outlined,
                                 ),
                                 _buildStatCard(
-                                  title: 'Avg Glucose',
-                                  value: 'Not recorded',
-                                  bgColor: AppConstants.accentCyanLight,
-                                  accentColor: AppConstants.accentCyan,
-                                  icon: Icons.water_drop_outlined,
+                                  title: 'Health Assessments',
+                                  value: scanData.isLoading
+                                      ? 'Loading...'
+                                      : (scanData.loadError != null
+                                          ? 'Unavailable'
+                                          : (scanData.totalAssessments
+                                                  ?.toString() ??
+                                              '0')),
+                                  bgColor: const Color(0xFFEFF6FF),
+                                  accentColor: AppConstants.primaryBlue,
+                                  icon: Icons.assignment_outlined,
                                 ),
                               ],
                             ),
@@ -374,14 +380,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppConstants.textSecondary,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppConstants.textSecondary,
+                  ),
                 ),
               ),
+              const SizedBox(width: 6),
               Icon(icon, color: accentColor, size: 20),
             ],
           ),
